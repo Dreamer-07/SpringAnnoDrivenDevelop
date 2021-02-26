@@ -209,7 +209,7 @@
          /**
           * 判断条件的主执行方法
           * @param context 判断条件时的上下文环境
-          * @param metadata 注释信息
+          * @param metadata 注解信息
           * @return 返回 true 代表条件满足，反之相反
           */
          @Override
@@ -486,10 +486,200 @@
 
 ### 三、总结
 
-1. 对应自定义的组件：包扫描+组件注解(@Controller/@Service/@Repository/@Component)
-2. 对应第三方的组件：使用 @Bean 进行注册
-3. 快速给容器中导入一个 bean：使用 @Import 注解
-4. 使用 Spring 提供的 FactoryBean(工厂 Bean)
+- 给 Spring IOC 容器中注册组件的方式
+  - 对应自定义的组件：包扫描+组件注解(@Controller/@Service/@Repository/@Component)
+  - 对应第三方的组件：使用 @Bean 进行注册
+  - 快速给容器中导入一个 bean：使用 @Import 注解
+  - 使用 Spring 提供的 FactoryBean(工厂 Bean)
+
+## 1.2 生命周期
+
+### 一、概念
+
+- bean 的生命周期：创建 -> 初始化 -> 销毁
+- 而 Spring 中由 IOC 容器辅助帮我们进行管理
+- 我们也可以自定义初始化和销毁方法
+
+### 二、自定义 bean 初始化和销毁方法
+
+#### 1). 通过 @Bean 注解
+
+- 说明：指定 `@Bean` 注解的 `initNethod` 和 `destroyMethod` 属性为对应的 bean 实例对象中的方法
+
+- 实例
+
+  ```java
+  // 1. 设计类和方法
+  public class Person {
+  
+      private String name;
+      private Integer age;
+  
+      public Person(String name, Integer age) {
+          System.out.println("Person()....");
+          this.name = name;
+          this.age = age;
+      };
+  
+      // 对应的 bean 实例初始化时调用的方法
+      public void init(){
+          System.out.println("person..init()...");
+      }
+  
+      // 对应的 bean 实例销毁时调用的方法
+      public void destroy(){
+          System.out.println("person..destroy()...");
+      }
+  }
+  
+  ...
+  
+      // 2. 使用 @Bean 注册时设置初始化方法和销毁方法
+      @Configurable
+      public class LifeCycleConfig {
+  
+          /**
+       * 1. 指定 @Bean 注解的 initMethod 和 destroyMethod 为对应的 bean 实例中的方法
+       * @return
+       */
+          @Bean(initMethod="init", destroyMethod = "destroy")
+          public Person person(){
+              return new Person("巴御前", 16);
+          }
+  
+      }
+  ```
+
+#### 2). 实现 InitializingBean & **DisposableBean** 接口
+
+- 说明：实现 **InitializingBean** 接口，完成初始化方法的逻辑；实现 **DisposableBean** 接口，完成销毁方法的逻辑
+
+- 实例
+
+  ```java
+  public class Servant implements InitializingBean, DisposableBean {
+  
+      public Servant() {
+          System.out.println("Servant()...");
+      }
+  
+      /**
+       * 初始化方法：会在创建 bean 实例，并完成属性赋值后执行
+       * @throws Exception
+       */
+      @Override
+      public void afterPropertiesSet() throws Exception {
+          System.out.println("servant,,afterPropertiesSet()...");
+      }
+  
+      @Override
+      public void destroy() throws Exception {
+          System.out.println("servant,,destroy()...");
+      }
+  }
+  ```
+
+  随后注册到 IOC 容器中即可
+
+#### 3). JSR250 规范 
+
+- 说明：使用 JSR250 规范中改的 `@PostConstruct` 和 `@PreDestroy` 注解
+
+- 使用
+
+  - `@PostConstruct`：作用在方法上，在对应的对象创建且属性赋值完成后，调用该方法
+  - `@PreDestroy`：作用在方法上，在对应的对象即将销毁之前调用该方法
+
+- 实例
+
+  ```java
+  public class Master {
+  
+      public Master() {
+          System.out.println("Master()..");
+      }
+  
+      @PostConstruct
+      public void init(){
+          System.out.println("master..init....");
+      }
+  
+      @PreDestroy
+      public void destroy(){
+          System.out.println("master...destroy");
+      }
+  }
+  ```
+
+  随后注册到 IOC 容器中即可
+
+#### 4). 实现 **BeanPostProcessor** 接口
+
+- 说明：BeanPostProcessor -  bean 的后置处理器
+
+- 使用 - 重写的两个方法
+
+  1. postProcessBeforeInitialization()：在所有初始化方法之前执行
+  2. postProcessAfterInitialization()：在所有初始化方法执行之后执行
+
+- 实例
+
+  ```java
+  public class MyBeanPostProcessor implements BeanPostProcessor {
+  
+      /**
+       * 在 bean 实例的所有初始化方法执行之前
+       * @param bean 当前的操作的 bean 实例
+       * @param beanName 对应的 bean id
+       * @return 处理后的 bean 实例 / null(不进行任何处理)
+       * @throws BeansException
+       */
+      @Override
+      public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+          System.out.println(beanName + ".postProcessBeforeInitialization() => " + bean);
+          return bean;
+      }
+  
+      @Override
+      public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+          System.out.println(beanName + ".postProcessAfterInitialization() => " + bean);
+          return bean;
+      }
+  }
+  ```
+
+  注册到对应的 IOC 容器中即可
+
+#### 5). BeanPostProcessor 执行过程 (参考 Spring5.x)
+
+1. 在 BeanFactory 创建对应的 bean 实例是，会执行 `populateBean()` 方法用于进行属性赋值
+
+2. 调用 `initializeBean()` 方法开始 bean 的初始化
+
+3. 在初始化之前执行 `applyBeanPostProcessorsBeforeInitialization()` 方法
+
+   该方法会遍历 IOC 配置的所有 **BeanPostProcessor**，并执行对应的 `postProcessBeforeInitialization()` 方法
+
+   **如果该方法的返回值为 null，就返回处理之前的 bean 实例对象；否则直到遍历结束**
+
+4. 执行初始化方法 `invokeInitMethods()`
+
+5. 在初始化之后执行 `applyBeanPostProcessorsAfterInitialization()` 方法
+
+   和第三步同理
+
+**Spring 对 BeanPostProcessor 的使用：bean 赋值，注入其他组件，@Autowired 自动装配，@Async 等都是通过不同的 BeanPostProcessor 实现类完成的**
+
+### *. bean 生命周期的执行时机
+
+1. 创建：
+   - 单实例：在容器启动时创建
+   - 多实例：从容器中获取时创建
+2. 属性赋值
+3. 执行 bean 后置处理器的 postProcessBeforeInitialization()
+4. 初始化：在对象创建好之后，并完成赋值之后
+5. 执行 bean 后置处理器的 postProcessAfterInitialization()
+6. 销毁：容器关闭时
 
 # 第二章 扩展原理
 

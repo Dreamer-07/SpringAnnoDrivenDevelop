@@ -12,6 +12,6 @@ public class Color {
     private Integer id;
     private String name;
 
-    
+
 
 }
