@@ -681,6 +681,60 @@
 5. 执行 bean 后置处理器的 postProcessAfterInitialization()
 6. 销毁：容器关闭时
 
+## 1.3 属性赋值
+
+### 一、注解开发
+
+#### 1) @Value
+
+- 说明：作用在属性上，在初始化之前完成属性赋值
+
+- 使用(这里针对 value 取值)
+
+  1. 基本数据
+  2. 使用 SpEL 表达式(#{})
+  3. 使用 ${} 读取环境变量的值
+
+- 实例
+
+  ```java
+  public class Person {
+      
+      @Value("巴御前")
+      private String name;
+  
+      @Value("#{20 - 2}")
+      private Integer age;
+  
+      @Value("${person.nickName}")
+      private String nickName;
+  
+  }
+  ```
+
+#### 2) @PropertySource
+
+- 说明：读取指定配置文件中的内容(k/v)并保存到运行的环境变量中
+
+- 实例
+
+  ```java
+  @PropertySource({"classpath:/person.properties"})
+  public class PropValueConfig {
+  ```
+
+  ```properties
+  person.nickName="巴ちゃん"
+  ```
+
+- 注意
+
+  1. 保存到环境变量的中，也可以通过 **Environment** 实例对象获取
+
+  2. 和 `@Component` 注解相识，可以通过多个 `@PropertySource` 读取多个配置文件，
+
+     也可以通过使用 `@PropertySources` 中配置多个 `@PropertySource` 读取多个配置文件
+
 # 第二章 扩展原理
 
 # 第三章 web
