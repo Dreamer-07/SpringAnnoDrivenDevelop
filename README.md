@@ -23,7 +23,8 @@
 - 使用
   - 类型为返回值类型，id 默认为方法名
   - 可以指定**注解的 value 值** 为对应的 id 
-
+- 标注的方法中使用的参数都会从 IOC 容器中获取
+  
 - 实例
 
   ```java
@@ -214,7 +215,7 @@
           */
          @Override
          public boolean matches(ConditionContext context, AnnotatedTypeMetadata metadata) {
-             /* ConditionContext context 方法
+             /* ConditionContext context 方法：
              *   getBeanFactory(); 可以获取 ioc 容器使用的 bean Factory
              *   getClassLoader(); 可以获取类加载器
              *   getEnvironment(); 可以获取运行时的环境
@@ -482,15 +483,14 @@
   1. 通过注册 FactoryBean 的 id 在 IOC 容器中默认获取的是其 getObject() 方法返回后装配的 bean 实例
   2. 如果需要获取 FactoryBean 实例，可以在对应的 id 前加上 **&** 即可
 
-  
 
 ### 三、总结
 
 - 给 Spring IOC 容器中注册组件的方式
-  - 对应自定义的组件：包扫描+组件注解(@Controller/@Service/@Repository/@Component)
-  - 对应第三方的组件：使用 @Bean 进行注册
-  - 快速给容器中导入一个 bean：使用 @Import 注解
-  - 使用 Spring 提供的 FactoryBean(工厂 Bean)
+  - 对应自定义的组件：包扫描+组件注解(@Controller/@Service/@Repository/@Component) - id 为对应的类名首字母小写
+  - 对应第三方的组件：使用 @Bean 进行注册 - id 为对应的方法名
+  - 快速给容器中导入一个 bean：使用 @Import 注解 - id为对应的全类名
+  - 使用 Spring 提供的 FactoryBean(工厂 Bean) - id 为对应的方法名
 
 ## 1.2 生命周期
 
@@ -550,7 +550,7 @@
       }
   ```
 
-#### 2). 实现 InitializingBean & **DisposableBean** 接口
+#### 2). Bean 类实现 InitializingBean & **DisposableBean** 接口
 
 - 说明：实现 **InitializingBean** 接口，完成初始化方法的逻辑；实现 **DisposableBean** 接口，完成销毁方法的逻辑
 
@@ -581,9 +581,9 @@
 
   随后注册到 IOC 容器中即可
 
-#### 3). JSR250 规范 
+#### 3). Bean 类实现 JSR250 规范 
 
-- 说明：使用 JSR250 规范中改的 `@PostConstruct` 和 `@PreDestroy` 注解
+- 说明：在 Bean 类中使用 JSR250 规范中的 `@PostConstruct` 和 `@PreDestroy` 注解
 
 - 使用
 
@@ -613,7 +613,7 @@
 
   随后注册到 IOC 容器中即可
 
-#### 4). 实现 **BeanPostProcessor** 接口
+#### 4). 配置类实现 **BeanPostProcessor** 接口
 
 - 说明：BeanPostProcessor -  bean 的后置处理器
 
@@ -652,7 +652,7 @@
 
 #### 5). BeanPostProcessor 执行过程 (参考 Spring5.x)
 
-1. 在 BeanFactory 创建对应的 bean 实例是，会执行 `populateBean()` 方法用于进行属性赋值
+1. 在 BeanFactory 创建对应的 bean 实例时，会执行 `populateBean()` 方法用于进行属性赋值
 
 2. 调用 `initializeBean()` 方法开始 bean 的初始化
 
@@ -734,6 +734,207 @@
   2. 和 `@Component` 注解相识，可以通过多个 `@PropertySource` 读取多个配置文件，
 
      也可以通过使用 `@PropertySources` 中配置多个 `@PropertySource` 读取多个配置文件
+
+#### 3) @Autowired
+
+- 作用：自动装配：自动注入容器中对应的 bean 实例
+
+  **Spring 利用依赖注入(DI)，完成对 IOC 容器中各个组件的依赖关系赋值**
+
+- 使用
+
+  1. 如果容器中只有**一个对应类型的 bean 实例**，就使用其进行依赖注入 DI (context.getBean(Class))
+
+   2. 如果容器中有**多个对应类型的 bean 实例**，就将**对应的属性名作为 id** 寻找
+
+      注册时如果有多个重复 id 的 bean 实例，则会覆盖
+
+  3. 默认情况下使用该注解的属性容器中**必须**有对应的 bean 实例，否则就会报错
+
+     可以指定其 required 属性为 false，就不会报错
+
+   4. 可以配合 `@Qualifier` 注解指定 value 值为对应的 bean id
+
+  5. 可以在**注册的 bean 实例上**使用 `@Primary` 注解指定其为 IOC 装配时使用的首选项
+
+#### 4) @Qualifier
+
+- 作用：根据 id 在 IOC 容器中查找对应的 bean 实例
+
+#### 5) @Primary
+
+- 作用：将对应的注册 bean 实例作为 IOC 自动装配时使用的**首选项**
+
+#### 6) @Resource(JSR 250规范)
+
+- 作用：实现自动装配
+- 使用
+  - 默认通过属性名装配对应的 bean 实例，可以通过指定 name 属性值装配指定的 bean 实例
+  - 不支持 `@Qualifier` 和 `@Primary` 
+  - 无法使用和 `@Autowired(required = false)` 的功能
+
+#### 7) @Inject(JSR 330规范)
+
+- 作用：实现自动装配
+- 使用(需要导入 **javax inject** 包)
+  - 默认通过属性名装配对应的 bean 实例
+  - 支持 `@Qualifier` 和 `@Primary` 
+  - 无法指定任何属性
+
+#### 8) @Autowired & @Resouce & @Inject 的区别
+
+1. @Autowired 在 Spring 中使用的最为广泛，但只能在 Spring 中使用
+
+   而后两者属于 Java 规范，可以在其他的 IOC 框架中使用
+
+2. 强度：@Autowired > @Inject > @Resouce(在 Spring 中的使用)
+
+3. 但三者在 Spring 中都是通过 **AutowiredAnnotationBeanPostProcessor** bean 后置处理器实现自动装配
+
+#### 9) @Autowired 的其他使用
+
+1. 作用在**方法**上
+
+   - 使用：当对象作为 IOC 的 bean 实例创建时都会调用该方法，而方法中自定义类型的参数会从 IOC 容器中获取
+
+   - 实例
+
+     ```java
+     @Autowired
+     public void setServant(Servant servant) {
+         this.servant = servant;
+     }
+     ```
+
+     ```java
+     @Test
+     public void test03(){
+         Master master = context.getBean(Master.class);
+         Servant servant = context.getBean(Servant.class);
+         System.out.println(master.getServant() == servant); // true
+     }
+     ```
+
+   - 注意：如果是 `@Bean` 标注的方法，其中使用的参数都会从 IOC 容器中获取
+
+2. 作用在**构造器**上
+
+   - 使用：
+
+     当对象作为 IOC 的 bean 实例创建时**默认都会调用无参构造器**，再进行初始化赋值操作
+
+     如果 `@Autowired` 注解标注在对应的有参构造器上时，则会调用对应的构造器
+
+     其中使用的自定义类型的参数，也是通过 IOC 容器获取的
+
+   - 实例：
+
+     ```java
+     @Autowired
+     public Master(Servant servant) {
+         System.out.println("Master(Servant)....");
+         this.servant = servant;
+     }
+     ```
+
+   - 注意：
+
+     1. 当类的构造器**有且只有一个构造器**时，无论使不使用 `@Autowired` 都会调用该构造器，其中自定义类型的参数，依然会通过 IOC 中获取
+     2. 一个类中**不能有两个/两个以上**由 `@Autowired` 注解**标注的构造器**
+
+3. 作用在**参数**上
+
+   - 使用：
+
+     效果和放在方法/构造器上一致；但在**构造器**上时，默认还是会调用无参构造器，除非只有当前一个构造器
+
+     都会从 IOC 容器中获取对应的类型的组件完成赋值
+
+#### 10) @Profile 
+
+- 说明：Spring 为我们提供的**可以根据当前环境，动态的激活/切换一系列组件**的功能
+
+- 例如：根据不同的环境(开发环境/测试环境/生产环境)切换数据源
+
+- 使用：
+
+  1. 可以通过指定 value 值为环境标识，来确定组件在对应的环境下才会被注册到容器中
+
+  2. 使用**命令行动态参数**：在虚拟机参数位置输入 `-Dspring.profiles.acvtive=环境标识`
+
+  3. Spring Boot 中根据命名规则(application-{profile}，profile=dev ：开发环境、test：测试环境、prod：生产环境)，
+
+  4. 也可以在 `application.properties` 中使用 **spring.profiles.active** 项激活一个/多个配置文件
+
+     ```properties
+     spring.profiles.active: prod,proddb,prodmq
+     ```
+
+     如果没有指定就会默认启动application-default.properties。
+
+  5. 如果将其**标注在类上**就代表只有在对应的运行环境下其中的所有配置才可以生效
+
+- 注意：
+
+  1. 如果不指定在任何环境下都不会注册组件
+  2. 不使用该注解和指定该注解和 value 值为 **default** 一致
+
+### 二、扩展
+
+#### 1) 使用 Spring 底层组件
+
+- 说明：如果自定义组件想要使用 Spring 容器底层组件(IOC 容器、BeanFactory等)，是需要实现对应的 `xxxAware` 接口
+
+- **Aware** 接口：实现该接口的各种继承接口可以完成对应的需求
+
+  (例如)
+
+  1. 实现 **AplicationContextAware** 接口，通过 setApplicationContext() 方法**保存 IOC 容器**
+  2. 实现 **BeanNameAware** 接口，通过 setBeanName() 方法获取 beanName
+  3. 实现 **EmbeddedValueResolverAware** 接口，通过 setEmbeddedValueResolver() 方法使用 Spring 用的占位符解析器(#{}、${})
+
+- 实例
+
+  ```java
+  @ToString
+  @Component
+  @Getter
+  public class Archer implements ApplicationContextAware, BeanNameAware, EmbeddedValueResolverAware {
+  
+      private ApplicationContext context;
+      private String beanName;
+      private String strVal;
+  
+      @Override
+      public void setApplicationContext(ApplicationContext context) throws BeansException {
+          this.context = context;
+      }
+  
+      @Override
+      public void setBeanName(String name) {
+          this.beanName = name;
+      }
+  
+      @Override
+      public void setEmbeddedValueResolver(StringValueResolver resolver) {
+          this.strVal = resolver.resolveStringValue("当前操作系统是 ${os.name},计算 30 - 5 为 #{30-5}");
+      }
+  }
+  ```
+
+  ```java
+  @Test
+  public void test04(){
+      Archer archer = context.getBean(Archer.class);
+      System.out.println(archer.getContext() == context); // true
+      System.out.println(archer.getBeanName()); // archer
+      System.out.println(archer.getStrVal()); // 当前操作系统是 Windows 10,计算 30 - 5 为 25
+  }
+  ```
+
+- 注意：一些 Aware 接口 都也是通过对应的 **xxxAwareProcessor** 对应的 bean 后置处理器进行注入的
+
+## 1.4 Aop
 
 # 第二章 扩展原理
 

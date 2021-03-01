@@ -14,7 +14,7 @@ import pers.dreamer07.springAoon.bean.Person;
 /*
   @PropertySource: 读取指定的配置文件的内容(k/v)并保存到运行的环境变量中
  */
-@PropertySource({"classpath:/person.properties"})
+@PropertySource({"src/03_prop-value/person.properties"})
 public class PropValueConfig {
 
     @Bean
