@@ -936,7 +936,410 @@
 
 ## 1.4 Aop
 
-# 第二章 扩展原理
+> 指定程序在运行时动态的**将某段代码放到的指定方法指定位置**进行运行的编程方式
 
-# 第三章 web
+### 一、复习
 
+#### 1) 操作术语
+
+1. 连接点(JoinPoint)：被 Spring 拦截到的程序执行点，通常由两个信息确定(目标方法 + 通知类型)
+
+2. 切入点：对连接点进行拦截的条件定义，可以根据一定规则(切入点表达式)来匹配连接点，给满足的连接点添加通知
+
+3. 通知(增强)：**切入点**中的逻辑部分称为通知
+
+   (通知的分类-对应注解):
+
+   - 前置通知(@Before)：在切入点前执行
+   - 返回通知(@AfterReturning)：在切入点后执行(如果抛出异常就不执行)
+   - 环绕通知(@Around)：动态代理，可以手动推进切入点的执行
+   - 异常通知(@AfterThrowing)：切入点执行过程中如果抛出异常就执行
+   - 后置通知(@After)：在切入点正常返回值后执行(如果抛出异常依然执行)
+
+4. 切面：由切入点和通知组成的一个类，包含其中对应不同的增强方法
+
+5. 目标对象：要被增强的对象，也就是被通知的对象
+
+#### 2) 概念
+
+- **面向切面编程**，利用 AOP 可以对业务逻辑的各个部分进行隔离，从而使得业务逻辑各部分之间的
+
+  耦合度降低，提供程序的可重用性，同时提高开发的效率
+
+  ![image-20210302143143286](C:\Users\EMTKnight\AppData\Roaming\Typora\typora-user-images\image-20210302143143286.png)
+
+#### 3) 底层原理 - 动态代理
+
+1. 使用接口 - JDK 动态代理
+
+   创建接口实现类的代理对象，增强类中的切入点
+
+   ![image-20210302143403752](C:\Users\EMTKnight\AppData\Roaming\Typora\typora-user-images\image-20210302143403752.png)
+
+2. 使用类 - CGLIB 动态代理
+
+   创建当前类子类的代理对象，增强类中的切入点
+
+   ![image-20210302143435516](C:\Users\EMTKnight\AppData\Roaming\Typora\typora-user-images\image-20210302143435516.png)
+
+#### 4) 切入点表达式
+
+- 作用：指定对某个类中的切入点进行增强
+
+- 语法结构：execution(\[权限修饰符]\[返回类型][全类名].\[方法名称]([参数列表]) )
+
+- 实例
+
+  ```
+  execution("* pers.dreamer07.spring.dao.BookDAO.add(..)")
+  ```
+
+- 注意
+
+  1. 可以使用 * 标识任意权限
+  2. 返回值类型可以忽略
+  3. 参数列表写出对应的数据类型即可，可以使用 **..** 表示任意
+
+#### 5) @PointCut
+
+- 作用：抽取公共的切入点表达式
+
+- 使用
+
+  - 定义 - value 值指定为对应的切入点表达式
+
+    ```java
+    @PonitCut("execution(* pers.dreamer07.spring.aopanno.User.add(..))")
+    public void pointName(){};
+    ```
+
+  - 使用 
+
+    ```java
+    // 本类中使用
+    @Before("pointName()")
+    public void before(){};
+    
+    // 外部的切面类使用
+    @After("pers.dreamer07.spring.config.LogAspects.pointName()")}
+    public void After(){};
+    ```
+
+### 二、注解开发
+
+#### 1) @Aspect
+
+- 作用：标注该类是一个**切面类**
+
+#### 2) @EnableAspectJAutoProxy
+
+- 作用：开启基于 AOP 的注解
+
+#### 3) 通知注解
+
+- 作用：根据不同的通知注解进行不同的增强
+- 使用
+  - value - 切入点表达式
+  - returnting - 指定连接点的哪个参数用来接收返回值
+  - throwing - 指定连接点的哪个参数用来接收异常信息
+
+### 三、扩展类
+
+#### 1) JoinPoint
+
+- 说明：通过其获取对应的切入点的一些信息(方法名。参数列表等)
+
+- 使用：
+
+  1. 可以通过在连接点上接收该类型的参数即可，且 **必须作为参数列表中的第一个参数**
+
+  2. 除了基础的方法还，在 `@Around` 注解可以通过 proceed() 方法进行调用切入点
+
+     但是需要使用其的子接口类型：**ProceedingJoinPoint**
+
+### 四、在 Springboot 中使用 AOP
+
+1. 导入相关的 Spring AOP 依赖
+
+   ```xml
+   <!-- 导入 SpringAop 依赖 -->
+   <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-starter-aop</artifactId>
+   </dependency>
+   ```
+
+2. 编写切面类
+
+   ```java
+   @Aspect // 标识切面类
+   public class LogAspect {
+   
+       /**
+        * 使用 @PointCut 完成对公共切入点表达式的抽取
+        */
+       @Pointcut("execution(* pers.dreamer07.springAoon.service.*.*(..))")
+       public void pointName(){};
+   
+       /**
+        * 使用注解：
+        *  @Before: 前置通知
+        * @param joinPoint 连接点信息类
+        */
+       @Before("pointName()")
+       public void Before(JoinPoint joinPoint){
+           System.out.println("@Before：切入点方法名：" + joinPoint.getSignature().getName() + ", 参数列表：" + Arrays.toString(joinPoint.getArgs()));
+       };
+   
+       @After("pers.dreamer07.springAoon.aspect.LogAspect.pointName()") // 后置通知
+       public void After(){
+           System.out.println("@After 后置通知");
+       }
+   
+       @AfterReturning(returning = "result", value = "pointName()") // 返回通知
+       public void AfterReturning(Object result){
+           System.out.println("@AfterReturning: 返回结果 " + result);
+       }
+   
+       @AfterThrowing(throwing = "exception", value = "pointName()") // 异常通知
+       public void AfterThrowing(Exception exception){
+           System.out.println("@AfterThrowing: 抛出异常 " + exception);
+       }
+   
+       @Around("pointName()")
+       public Object Around(ProceedingJoinPoint joinPoint) throws Throwable {
+           System.out.println("@Around: 环绕前通知");
+           // 调用 joinPoint.proceed() 调用目标方法
+           Object result = joinPoint.proceed();
+           System.out.println("@Around: 环绕后通知");
+           return result;
+       }
+   
+   }
+   ```
+
+3. 编写 Service 业务逻辑类
+
+4. 使用 `@EnableAspectJAutoProxy` 注解开启 Aop 注解
+
+   导入业务逻辑类和切面类
+
+   ```java
+   @Configuration
+   @Import({LogAspect.class, BookService.class})
+   @EnableAspectJAutoProxy(proxyTargetClass = true)
+   public class AopConfig {
+   ```
+
+### 五、Aop 原理
+
+#### 1)  @AspectJAutoProxyRegistrar 注解
+
+1. 使用 `@Import` 导入了一个 **AspectJAutoProxyRegistrar** 组件，该组件实现了 ImportBeanDefinitionRegistrar(可以自定义设计逻辑完成 bean 的注册)
+
+2. 调用 `AopConfigUtils.registerAspectJAnnotationAutoProxyCreatorIfNecessary()` 注册一个 **AspectJ 自动代理创建器** 
+
+3. 最后会调用 `AopConfigUtils.registerOrEscalateApcAsRequired()`方法
+
+   注册/升级一个名为 xxx.internalAutoProxyCreator 的 bean 定义信息(启动的类型指定为 AnnotationAwareAspectJAutoProxyCreator )
+
+   ```java
+   // 判断是否注册过对应的 bean 实例
+   if (registry.containsBeanDefinition(AUTO_PROXY_CREATOR_BEAN_NAME)) {
+       BeanDefinition apcDefinition = registry.getBeanDefinition(AUTO_PROXY_CREATOR_BEAN_NAME);
+       if (!cls.getName().equals(apcDefinition.getBeanClassName())) {
+           int currentPriority = findPriorityForClass(apcDefinition.getBeanClassName());
+           int requiredPriority = findPriorityForClass(cls);
+           if (currentPriority < requiredPriority) {
+               apcDefinition.setBeanClassName(cls.getName());
+           }
+       }
+       return null;
+   }
+   // 创建一个定义信息对象
+   RootBeanDefinition beanDefinition = new RootBeanDefinition(cls);
+   // 设置定义信息
+   beanDefinition.setSource(source);
+   beanDefinition.getPropertyValues().add("order", Ordered.HIGHEST_PRECEDENCE);
+   beanDefinition.setRole(BeanDefinition.ROLE_INFRASTRUCTURE);
+   // 向 IOC 容器中注册对应的 bean 定义信息对象
+   registry.registerBeanDefinition(AUTO_PROXY_CREATOR_BEAN_NAME, beanDefinition);
+   // bean 定义信息对象
+   return beanDefinition;
+   ```
+
+4. AnnotationAwareAspectJAutoProxyCreator
+
+   通过查看继承关系，可以发现最后其实现了 **BeanFactoryAware** 和 **xxxBeanPostProcessor** 接口
+
+   ![image-20210302195500442](README.assets/image-20210302195500442.png)
+
+
+
+#### 2) AnnotationAwareAspectJAutoProxyCreator
+
+- 查看继承关系中有关 BeanPostProcessor 和 BeanBeanFactory 的方法
+
+  1. BeanPostProcessor.postProcessAfterInitialization
+
+     ```j
+     AbstractAutoProxyCreator.postProcessAfterInitialization()
+     ```
+
+  2. BeanPostProcessor.postProcessBeforeInitialization
+
+  3. BeanBeanFactory.setBeanFactory
+
+     ```
+     AbstractAutoProxyCreator.setBeanFactory() -> AbstractAdvisorAutoProxyCreator.setBeanFactory() -> initBeanFactory()
+     ```
+
+  4. initBeanFactory
+
+     ```
+     AbstractAdvisorAutoProxyCreator.initBeanFactory() -> AnnotationAwareAspectJAutoProxyCreator.initBeanFactory()
+     ```
+
+- 注册 AnnotationAwareAspectJAutoProxyCreator 
+
+  1. 从创建 IOC 容器开始，调用 refresh() 刷新容器(初始化容器)
+
+  2. 可以发现会回调一个 `registerBeanPostProcessors(beanFactory)` 方法，该方法用于创建**拦截 bean 实例创建的 bean 后置处理器**
+
+  3. registerBeanPostProcessors() 实现的具体步骤
+
+     ```java
+     public static void registerBeanPostProcessors(
+         ConfigurableListableBeanFactory beanFactory, AbstractApplicationContext applicationContext) {
+     
+         // 获取 beanfactory 中所有 BeanPostProcessor 类型的 bean 实例的 id
+         String[] postProcessorNames = beanFactory.getBeanNamesForType(BeanPostProcessor.class, true, false);
+     
+         // 额外创建一个 BeanPostProcessorChecker 的 BeanPostProcessor
+         int beanProcessorTargetCount = beanFactory.getBeanPostProcessorCount() + 1 + postProcessorNames.length;
+         beanFactory.addBeanPostProcessor(new BeanPostProcessorChecker(beanFactory, beanProcessorTargetCount));
+     
+         // 设置两个保存的 BeanPostProcessor 实现类的容器，第一个用来保存实现了 PriorityOrdered/Ordered 接口的，第二个用来保存默认的
+         List<BeanPostProcessor> priorityOrderedPostProcessors = new ArrayList<>();
+         List<BeanPostProcessor> internalPostProcessors = new ArrayList<>();
+         // 对应的 bean id
+         List<String> orderedPostProcessorNames = new ArrayList<>();
+         List<String> nonOrderedPostProcessorNames = new ArrayList<>();
+         // 遍历从 beanfactory 中获取的 bean id
+         for (String ppName : postProcessorNames) {
+             // 是否实现 PriorityOrdered 接口
+             if (beanFactory.isTypeMatch(ppName, PriorityOrdered.class)) {
+                 // 从 beanFactory 中获取对应的 bean 实例(创建 bean 实例)
+                 BeanPostProcessor pp = beanFactory.getBean(ppName, BeanPostProcessor.class);
+                 priorityOrderedPostProcessors.add(pp);
+                 if (pp instanceof MergedBeanDefinitionPostProcessor) {
+                     internalPostProcessors.add(pp);
+                 }
+             }
+             // 是否实现 Order 接口
+             else if (beanFactory.isTypeMatch(ppName, Ordered.class)) {
+                 orderedPostProcessorNames.add(ppName);
+             }
+             // 按照默认顺序排除
+             else {
+                 nonOrderedPostProcessorNames.add(ppName);
+             }
+         }
+     
+         sortPostProcessors(priorityOrderedPostProcessors, beanFactory);
+         registerBeanPostProcessors(beanFactory, priorityOrderedPostProcessors);
+     
+         List<BeanPostProcessor> orderedPostProcessors = new ArrayList<>(orderedPostProcessorNames.size());
+         for (String ppName : orderedPostProcessorNames) {
+             BeanPostProcessor pp = beanFactory.getBean(ppName, BeanPostProcessor.class);
+             orderedPostProcessors.add(pp);
+             if (pp instanceof MergedBeanDefinitionPostProcessor) {
+                 internalPostProcessors.add(pp);
+             }
+         }
+         sortPostProcessors(orderedPostProcessors, beanFactory);
+         registerBeanPostProcessors(beanFactory, orderedPostProcessors);
+     
+         List<BeanPostProcessor> nonOrderedPostProcessors = new ArrayList<>(nonOrderedPostProcessorNames.size());
+         for (String ppName : nonOrderedPostProcessorNames) {
+             BeanPostProcessor pp = beanFactory.getBean(ppName, BeanPostProcessor.class);
+             nonOrderedPostProcessors.add(pp);
+             if (pp instanceof MergedBeanDefinitionPostProcessor) {
+                 internalPostProcessors.add(pp);
+             }
+         }
+         registerBeanPostProcessors(beanFactory, nonOrderedPostProcessors);
+     
+         sortPostProcessors(internalPostProcessors, beanFactory);
+         registerBeanPostProcessors(beanFactory, internalPostProcessors);
+     
+         beanFactory.addBeanPostProcessor(new ApplicationListenerDetector(applicationContext));
+     }
+     ```
+
+  4. beanFactory.getBean() -> doGetBean()
+
+     ```java
+     protected <T> T doGetBean(
+     			String name, @Nullable Class<T> requiredType, @Nullable Object[] args, boolean typeCheckOnly)
+     			throws BeansException {
+     
+         	// 包装对应的 bean id
+     		String beanName = transformedBeanName(name);
+     		Object beanInstance;
+     
+     		// 获取对应的 bean 实例
+     		Object sharedInstance = getSingleton(beanName);
+         	// 如果 bean 实例不为空且参数为 null
+     		if (sharedInstance != null && args == null) {
+     			...
+     		}
+         
+         	...
+                 
+         	try {
+                 if (requiredType != null) {
+                     beanCreation.tag("beanType", requiredType::toString);
+                 }
+                 RootBeanDefinition mbd = getMergedLocalBeanDefinition(beanName);
+                 checkMergedBeanDefinition(mbd, beanName, args);
+     
+                 // Guarantee initialization of beans that the current bean depends on.
+                 String[] dependsOn = mbd.getDependsOn();
+                 if (dependsOn != null) {
+                     for (String dep : dependsOn) {
+                         if (isDependent(beanName, dep)) {
+                             throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+                                                             "Circular depends-on relationship between '" + beanName + "' and '" + dep + "'");
+                         }
+                         registerDependentBean(dep, beanName);
+                         try {
+                             getBean(dep);
+                         }
+                         catch (NoSuchBeanDefinitionException ex) {
+                             throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+                                                             "'" + beanName + "' depends on missing bean '" + dep + "'", ex);
+                         }
+                     }
+                 }
+     
+                 // Create bean instance.
+                 if (mbd.isSingleton()) {
+                     sharedInstance = getSingleton(beanName, () -> {
+                         try {
+                             return createBean(beanName, mbd, args);
+                         }
+                         catch (BeansException ex) {
+                             // Explicitly remove instance from singleton cache: It might have been put there
+                             // eagerly by the creation process, to allow for circular reference resolution.
+                             // Also remove any beans that received a temporary reference to the bean.
+                             destroySingleton(beanName);
+                             throw ex;
+                         }
+                     });
+                     beanInstance = getObjectForBeanInstance(sharedInstance, name, beanName, mbd);
+                 }
+         
+     ```
+
+     
