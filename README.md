@@ -12,7 +12,7 @@
 
 ### 一、注解开发
 
-#### 1) @Configuration
+#### 1) @Configuration 
 
 - 概念：告诉 Spring 这是一个配置类(配置文件)
 
@@ -99,10 +99,10 @@
   2. 如果类 A 使用 excludeFilters ，在组件扫描时，如果发现类 B 的 `@ComponentScan` 注解**没有定义一样的排除规则**时，类 A，B 的排除规则都不会生效
 
      可以额外添加一个 `@Filter` 排除类 B 即可
+     
+  3. # **拓展**
 
-- **拓展**
-
-  1. 实现 TypeFilter 接口，自定义过滤规则
+  4. 实现 TypeFilter 接口，自定义过滤规则
 
      ```java
      /**
@@ -1137,7 +1137,7 @@
 
 1. 使用 `@Import` 导入了一个 **AspectJAutoProxyRegistrar** 组件，该组件实现了 ImportBeanDefinitionRegistrar(可以自定义设计逻辑完成 bean 的注册)
 
-2. 调用 `AopConfigUtils.registerAspectJAnnotationAutoProxyCreatorIfNecessary()` 注册一个 **AspectJ 自动代理创建器** 
+2. 调用 `AopConfigUtils.registerAspectJAnnotationAutoProxyCreatorIfNecessary()` 注册一个 **AspectJ 自动代理创建器(AnnotationAwareAspectJAutoProxyCreator)** 
 
 3. 最后会调用 `AopConfigUtils.registerOrEscalateApcAsRequired()`方法
 
@@ -1176,170 +1176,532 @@
 
 
 
-#### 2) AnnotationAwareAspectJAutoProxyCreator
+#### 2) AnnotationAwareAspectJAutoProxyCreator 相关方法
 
 - 查看继承关系中有关 BeanPostProcessor 和 BeanBeanFactory 的方法
 
-  1. BeanPostProcessor.postProcessAfterInitialization
+  1. BeanPostProcessor.postProcessAfterInitialization - 初始化 bean 之后的工作
 
      ```j
      AbstractAutoProxyCreator.postProcessAfterInitialization()
      ```
 
-  2. BeanPostProcessor.postProcessBeforeInitialization
+  2. BeanPostProcessor.postProcessBeforeInitialization - 初始化 bean 之前的工作
 
-  3. BeanBeanFactory.setBeanFactory
+  3. InstantiationAwareBeanPostProcessor.postProcessBeforeInstantiation - 实例化之前的前期工作
+
+     ```java
+     AbstractAutoProxyCreator.postProcessBeforeInstantiation
+     ```
+
+  4. InstantiationAwareBeanPostProcessor.postProcessAfterInstantiation - 实例化之前的后期工作
+
+  5. BeanBeanFactory.setBeanFactory
 
      ```
      AbstractAutoProxyCreator.setBeanFactory() -> AbstractAdvisorAutoProxyCreator.setBeanFactory() -> initBeanFactory()
      ```
 
-  4. initBeanFactory
+  6. initBeanFactory
 
      ```
      AbstractAdvisorAutoProxyCreator.initBeanFactory() -> AnnotationAwareAspectJAutoProxyCreator.initBeanFactory()
      ```
 
-- 注册 AnnotationAwareAspectJAutoProxyCreator 
 
-  1. 从创建 IOC 容器开始，调用 refresh() 刷新容器(初始化容器)
+#### 3) 注册 AnnotationAwareAspectJAutoProxyCreator 
 
-  2. 可以发现会回调一个 `registerBeanPostProcessors(beanFactory)` 方法，该方法用于创建**拦截 bean 实例创建的 bean 后置处理器**
+> 不要忘记它是一个 bean 后置处理器
 
-  3. registerBeanPostProcessors() 实现的具体步骤
+1. 从创建 IOC 容器开始，调用 refresh() 刷新容器(初始化容器)
 
-     ```java
-     public static void registerBeanPostProcessors(
-         ConfigurableListableBeanFactory beanFactory, AbstractApplicationContext applicationContext) {
-     
-         // 获取 beanfactory 中所有 BeanPostProcessor 类型的 bean 实例的 id
-         String[] postProcessorNames = beanFactory.getBeanNamesForType(BeanPostProcessor.class, true, false);
-     
-         // 额外创建一个 BeanPostProcessorChecker 的 BeanPostProcessor
-         int beanProcessorTargetCount = beanFactory.getBeanPostProcessorCount() + 1 + postProcessorNames.length;
-         beanFactory.addBeanPostProcessor(new BeanPostProcessorChecker(beanFactory, beanProcessorTargetCount));
-     
-         // 设置两个保存的 BeanPostProcessor 实现类的容器，第一个用来保存实现了 PriorityOrdered/Ordered 接口的，第二个用来保存默认的
-         List<BeanPostProcessor> priorityOrderedPostProcessors = new ArrayList<>();
-         List<BeanPostProcessor> internalPostProcessors = new ArrayList<>();
-         // 对应的 bean id
-         List<String> orderedPostProcessorNames = new ArrayList<>();
-         List<String> nonOrderedPostProcessorNames = new ArrayList<>();
-         // 遍历从 beanfactory 中获取的 bean id
-         for (String ppName : postProcessorNames) {
-             // 是否实现 PriorityOrdered 接口
-             if (beanFactory.isTypeMatch(ppName, PriorityOrdered.class)) {
-                 // 从 beanFactory 中获取对应的 bean 实例(创建 bean 实例)
-                 BeanPostProcessor pp = beanFactory.getBean(ppName, BeanPostProcessor.class);
-                 priorityOrderedPostProcessors.add(pp);
-                 if (pp instanceof MergedBeanDefinitionPostProcessor) {
-                     internalPostProcessors.add(pp);
-                 }
+2. 可以发现会回调一个 `registerBeanPostProcessors(beanFactory)` 方法，该方法用于创建**拦截 bean 实例创建的 bean 后置处理器**
+
+3. registerBeanPostProcessors() 实现的具体步骤
+
+   ```java
+   public static void registerBeanPostProcessors(
+       ConfigurableListableBeanFactory beanFactory, AbstractApplicationContext applicationContext) {
+   
+       // 获取 beanfactory 中所有 BeanPostProcessor 类型的 bean 实例的 id
+       String[] postProcessorNames = beanFactory.getBeanNamesForType(BeanPostProcessor.class, true, false);
+   
+       // 额外创建一个 BeanPostProcessorChecker 的 BeanPostProcessor
+       int beanProcessorTargetCount = beanFactory.getBeanPostProcessorCount() + 1 + postProcessorNames.length;
+       beanFactory.addBeanPostProcessor(new BeanPostProcessorChecker(beanFactory, beanProcessorTargetCount));
+   
+       /*
+       设置两个保存的 BeanPostProcessor 实现类的容器
+       	第一个用来保存实现了 PriorityOrdered 接口的 beam 实例，
+       	第二个用来保存实现了 MergedBeanDefinitionPostProcessor 接口的 bean 实例 - 内部 bean 实例
+       */
+       List<BeanPostProcessor> priorityOrderedPostProcessors = new ArrayList<>();
+       List<BeanPostProcessor> internalPostProcessors = new ArrayList<>();
+       // 第一个保存按照 Order 属性排序的 bean 后置处理器的 id；第二个用来保存按照默认顺序排序的 bean 后置处理器 id
+       List<String> orderedPostProcessorNames = new ArrayList<>();
+       List<String> nonOrderedPostProcessorNames = new ArrayList<>();
+       // 遍历从 beanfactory 中获取的 bean id
+       for (String ppName : postProcessorNames) {
+           // 是否实现 PriorityOrdered 接口
+           if (beanFactory.isTypeMatch(ppName, PriorityOrdered.class)) {
+               // 从 beanFactory 中获取对应的 bean 实例(创建 bean 实例)
+               BeanPostProcessor pp = beanFactory.getBean(ppName, BeanPostProcessor.class);
+               priorityOrderedPostProcessors.add(pp);
+               if (pp instanceof MergedBeanDefinitionPostProcessor) {
+                   internalPostProcessors.add(pp);
+               }
+           }
+           // 是否实现 Order 接口
+           else if (beanFactory.isTypeMatch(ppName, Ordered.class)) {
+               orderedPostProcessorNames.add(ppName);
+           }
+           // 按照默认顺序排除
+           else {
+               nonOrderedPostProcessorNames.add(ppName);
+           }
+       }
+   
+       // 对实现了 priorityOrdered 接口的 bean 后置处理器进行排序
+       sortPostProcessors(priorityOrderedPostProcessors, beanFactory);
+       // 注册对应的 bean 实例
+       registerBeanPostProcessors(beanFactory, priorityOrderedPostProcessors);
+   
+       // 创建一个 List 容器，用来保存实现 Order 接口的 bean 后置处理器的实例
+       List<BeanPostProcessor> orderedPostProcessors = new ArrayList<>(orderedPostProcessorNames.size());
+       for (String ppName : orderedPostProcessorNames) {
+           // getBean() -> doCreateBean();
+           BeanPostProcessor pp = beanFactory.getBean(ppName, BeanPostProcessor.class);
+           orderedPostProcessors.add(pp);
+           if (pp instanceof MergedBeanDefinitionPostProcessor) {
+               internalPostProcessors.add(pp);
+           }
+       }
+       // 排序 + 注册
+       sortPostProcessors(orderedPostProcessors, beanFactory);
+       registerBeanPostProcessors(beanFactory, orderedPostProcessors);
+   
+       // 保存没有实现 Order 接口的 bean 实例
+       List<BeanPostProcessor> nonOrderedPostProcessors = new ArrayList<>(nonOrderedPostProcessorNames.size());
+       for (String ppName : nonOrderedPostProcessorNames) {
+           BeanPostProcessor pp = beanFactory.getBean(ppName, BeanPostProcessor.class);
+           nonOrderedPostProcessors.add(pp);
+           if (pp instanceof MergedBeanDefinitionPostProcessor) {
+               internalPostProcessors.add(pp);
+           }
+       }
+       // 注册
+       registerBeanPostProcessors(beanFactory, nonOrderedPostProcessors);
+   
+       // 重新注册和排序所有内部的 bean 实例
+       sortPostProcessors(internalPostProcessors, beanFactory);
+       registerBeanPostProcessors(beanFactory, internalPostProcessors);
+   
+       // 重新注册 用于检测内部 bean 的 bean 后置处理器，但其作为处理器链的末尾
+       beanFactory.addBeanPostProcessor(new ApplicationListenerDetector(applicationContext));
+   }
+   ```
+
+4. beanFactory.getBean() -> doGetBean()：获取 bean 实例 (这里其实是创建一个 bean 实例)
+
+   ```java
+   protected <T> T doGetBean(
+   			String name, @Nullable Class<T> requiredType, @Nullable Object[] args, boolean typeCheckOnly)
+   			throws BeansException {
+   
+       // 包装对应的 bean id
+       String beanName = transformedBeanName(name);
+       Object beanInstance;
+   
+       // 获取对应的 bean 实例
+       Object sharedInstance = getSingleton(beanName);
+       // 如果 bean 实例不为空且参数为 null
+       if (sharedInstance != null && args == null) {
+           ...
+       }
+       
+       ...
+               
+       else {
+           ...
+               
+           try {
+               if (requiredType != null) {
+                   beanCreation.tag("beanType", requiredType::toString);
+               }
+               // 获取对应的 bean 定义信息对象
+               RootBeanDefinition mbd = getMergedLocalBeanDefinition(beanName);
+               // 查看 bean 定义信息对象
+               checkMergedBeanDefinition(mbd, beanName, args);
+   
+               // 获取当前 bean 的依赖 bean
+               String[] dependsOn = mbd.getDependsOn();
+               // 对依赖 bean 进行初始化
+               if (dependsOn != null) {
+                   for (String dep : dependsOn) {
+                       if (isDependent(beanName, dep)) {
+                           throw new BeanCreationException(mbd.getResourceDescription(), beanName, "Circular depends-on relationship between '" + beanName + "' and '" + dep + "'");
+                       }
+                       registerDependentBean(dep, beanName);
+                       try {
+                           getBean(dep);
+                       }
+                       catch (NoSuchBeanDefinitionException ex) {
+                           throw new BeanCreationException(mbd.getResourceDescription(), beanName,
+                                                           "'" + beanName + "' depends on missing bean '" + dep + "'", ex);
+                       }
+                   }
              }
-             // 是否实现 Order 接口
-             else if (beanFactory.isTypeMatch(ppName, Ordered.class)) {
-                 orderedPostProcessorNames.add(ppName);
-             }
-             // 按照默认顺序排除
-             else {
-                 nonOrderedPostProcessorNames.add(ppName);
+   
+               // 根据 bean 定义信息对象创建 bean 实例
+               if (mbd.isSingleton()) {
+                   sharedInstance = getSingleton(beanName, () -> {
+                       try {
+                           // 创建 bean 实例
+                           return createBean(beanName, mbd, args);
+                       }
+                       catch (BeansException ex) {
+                           destroySingleton(beanName);
+                           throw ex;
+                       }
+                   });
+                   beanInstance = getObjectForBeanInstance(sharedInstance, name, beanName, mbd);
+            }
+           }
+       }
+   }
+   ```
+   
+5. FactoryBean.createBean() -> doCreateBean()：创建 bean 实例
+
+   1. 创建 bean 实例
+
+   2. 调用 populateBean() 方法完成对 bean 实例的属性赋值
+
+   3. 调用 initializeBean() 方法进行 bean 的初始化工作
+
+   4. 调用 invokeAwareMethods() 方法进行判断 bean 实例是否实现某些 **Aware ** 接口，如果有就注册对应的组件
+
+      ```java
+      private void invokeAwareMethods(String beanName, Object bean) {
+          if (bean instanceof Aware) {
+              if (bean instanceof BeanNameAware) {
+                  ((BeanNameAware) bean).setBeanName(beanName);
+              }
+              if (bean instanceof BeanClassLoaderAware) {
+                  ClassLoader bcl = getBeanClassLoader();
+                  if (bcl != null) {
+                      ((BeanClassLoaderAware) bean).setBeanClassLoader(bcl);
+                  }
+              }
+              // 注入 beanFactory 
+              if (bean instanceof BeanFactoryAware) {
+                  ((BeanFactoryAware) bean).setBeanFactory(AbstractAutowireCapableBeanFactory.this);
+              }
+          }
+      }
+      ```
+
+   5. 调用 applyBeanPostProcessorsBeforeInitialization() 方法进行初始化之前的工作，得到包装后的 wrappedBean 实例
+
+   6. 执行自定义的初始化方法 invokeInitMethods() 
+
+   7. 调用 applyBeanPostProcessorsAfterInitialization() 方法进行初始化之前的工作
+
+   8. 返回包装后的 bean 实例 - wrappedBean
+
+6. beanfactory.registerBeanPostProcessors()：将 bean 后置处理器注册到 beanfactory 中
+
+   ```java
+   private static void registerBeanPostProcessors(
+       ConfigurableListableBeanFactory beanFactory, List<BeanPostProcessor> postProcessors) {
+   
+       if (beanFactory instanceof AbstractBeanFactory) {
+           // Bulk addition is more efficient against our CopyOnWriteArrayList there
+           ((AbstractBeanFactory) beanFactory).addBeanPostProcessors(postProcessors);
+       }
+       else {
+           // 遍历 bean 后置处理器实例集合
+           for (BeanPostProcessor postProcessor : postProcessors) {
+               // 注册到 beanFactory 中
+               beanFactory.addBeanPostProcessor(postProcessor);
+           }
+       }
+   }
+   ```
+
+#### 4) AnnotationAwareAspectJAutoProxyCreator 的执行时机
+
+> 1) 在创建 bean 实例之前作为 **InstantiationAwareBeanPostProcessor** 接口的实现类尝试在**初始化 bean 实例前**创建对应的代理对象
+>
+> 2) 在 bean 实例初始化工作之后，作为 **BeanPostProcessor** 接口的实现类尝试为 **bean 实例初始化之后**进行包装后返回(代理对象)
+
+1. 创建 IOC 容器时，在调用 registerBeanPostProcessors() 方法注册所有的 bean 后置处理器后
+
+   会调用 finishBeanFactoryInitialization() 方法注册**所有剩余的非延迟初始化单例 bean 实例**
+
+2. 内部会调用 preInstantiateSingletons() 方法完成
+
+   1. 获取容器中所有 bean id 以及对于的定义信息对象
+
+   2. 调用 isFactoryBean() 判断其是否为 FactoryBean，如果不是 -> getBean() -> doGetBean()
+
+   3. 调用 getSingleton() 判断该 bean 是否**存在于单例缓存(是否注册过)**：如果存在就获取对应的 bean 实例，进行包装后返回
+
+   4. 调用 createBean() -> toCreateBean() 创建实例
+   
+   5. 在**实例化 bean 之前**，会调用 resolveBeforeInstantiation() 
+   
+      1. 该方法的主要作用是，判断能否通过 BeanPostProcessor 返回一个目标 bean 的代理对象，而不是手动注册一个 bean 
+   
+      2. 调用 applyBeanPostProcessorsBeforeInstantiation() & applyBeanPostProcessorsAfterInitialization() 方法
+   
+         判断是否**支持为当前 bean 实例创建代理对象**，如果代理对象不为 null，就返回该代理对象
+   
+         ```java
+         if (targetType != null) {
+             bean = applyBeanPostProcessorsBeforeInstantiation(targetType, beanName);
+             if (bean != null) {
+                 bean = applyBeanPostProcessorsAfterInitialization(bean, beanName);
              }
          }
-     
-         sortPostProcessors(priorityOrderedPostProcessors, beanFactory);
-         registerBeanPostProcessors(beanFactory, priorityOrderedPostProcessors);
-     
-         List<BeanPostProcessor> orderedPostProcessors = new ArrayList<>(orderedPostProcessorNames.size());
-         for (String ppName : orderedPostProcessorNames) {
-             BeanPostProcessor pp = beanFactory.getBean(ppName, BeanPostProcessor.class);
-             orderedPostProcessors.add(pp);
-             if (pp instanceof MergedBeanDefinitionPostProcessor) {
-                 internalPostProcessors.add(pp);
-             }
-         }
-         sortPostProcessors(orderedPostProcessors, beanFactory);
-         registerBeanPostProcessors(beanFactory, orderedPostProcessors);
-     
-         List<BeanPostProcessor> nonOrderedPostProcessors = new ArrayList<>(nonOrderedPostProcessorNames.size());
-         for (String ppName : nonOrderedPostProcessorNames) {
-             BeanPostProcessor pp = beanFactory.getBean(ppName, BeanPostProcessor.class);
-             nonOrderedPostProcessors.add(pp);
-             if (pp instanceof MergedBeanDefinitionPostProcessor) {
-                 internalPostProcessors.add(pp);
-             }
-         }
-         registerBeanPostProcessors(beanFactory, nonOrderedPostProcessors);
-     
-         sortPostProcessors(internalPostProcessors, beanFactory);
-         registerBeanPostProcessors(beanFactory, internalPostProcessors);
-     
-         beanFactory.addBeanPostProcessor(new ApplicationListenerDetector(applicationContext));
-     }
-     ```
+         ```
+   
+      3. 其中会遍历所有 实现了  **InstantiationAwareBeanPostProcessor** 接口的 bean 后置处理器
+   
+         (**AnnotationAwareAspectJAutoProxyCreator implements** InstantiationAwareBeanPostProcessor)
+   
+   6. 总结：
+   
+      - AnnotationAwareAspectJAutoProxyCreator 作为 InstantiationAwareBeanPostProcessor 接口(该接口也是 BeanProcessor 接口的实现类)的实现类
+   
+      - 作为该接口的实现类，两个对应的主要方法，一个是 **postProcessBeforeInstantiation**()，另一个是 **postProcessAfterInstantiation**()
+   
+        **在创建 bean 实例之前，会调用这两个方法为符合规则的 bean 实例创建代理对象**
 
-  4. beanFactory.getBean() -> doGetBean()
+#### 5) AnnotationAwareAspectJAutoProxyCreator 创建 AOP 代理
 
-     ```java
-     protected <T> T doGetBean(
-     			String name, @Nullable Class<T> requiredType, @Nullable Object[] args, boolean typeCheckOnly)
-     			throws BeansException {
-     
-         	// 包装对应的 bean id
-     		String beanName = transformedBeanName(name);
-     		Object beanInstance;
-     
-     		// 获取对应的 bean 实例
-     		Object sharedInstance = getSingleton(beanName);
-         	// 如果 bean 实例不为空且参数为 null
-     		if (sharedInstance != null && args == null) {
-     			...
-     		}
-         
-         	...
-                 
-         	try {
-                 if (requiredType != null) {
-                     beanCreation.tag("beanType", requiredType::toString);
-                 }
-                 RootBeanDefinition mbd = getMergedLocalBeanDefinition(beanName);
-                 checkMergedBeanDefinition(mbd, beanName, args);
-     
-                 // Guarantee initialization of beans that the current bean depends on.
-                 String[] dependsOn = mbd.getDependsOn();
-                 if (dependsOn != null) {
-                     for (String dep : dependsOn) {
-                         if (isDependent(beanName, dep)) {
-                             throw new BeanCreationException(mbd.getResourceDescription(), beanName,
-                                                             "Circular depends-on relationship between '" + beanName + "' and '" + dep + "'");
-                         }
-                         registerDependentBean(dep, beanName);
-                         try {
-                             getBean(dep);
-                         }
-                         catch (NoSuchBeanDefinitionException ex) {
-                             throw new BeanCreationException(mbd.getResourceDescription(), beanName,
-                                                             "'" + beanName + "' depends on missing bean '" + dep + "'", ex);
-                         }
-                     }
-                 }
-     
-                 // Create bean instance.
-                 if (mbd.isSingleton()) {
-                     sharedInstance = getSingleton(beanName, () -> {
-                         try {
-                             return createBean(beanName, mbd, args);
-                         }
-                         catch (BeansException ex) {
-                             // Explicitly remove instance from singleton cache: It might have been put there
-                             // eagerly by the creation process, to allow for circular reference resolution.
-                             // Also remove any beans that received a temporary reference to the bean.
-                             destroySingleton(beanName);
-                             throw ex;
-                         }
-                     });
-                     beanInstance = getObjectForBeanInstance(sharedInstance, name, beanName, mbd);
-                 }
-         
-     ```
+> 1. 获取支持当前 bean 实例的增强器类
+>    1. 获取所有增强器类(通知方法)
+>    2. 筛选支持当前 bean 实例的增强器类
+>    3. 对增强器进行排序
+> 2. 添加到 advisedBeans 中进行保存
+> 3. 创建 bean 的代理对象，根据一定的条件。选择 JDK / CGILB 实现的代理对象
+> 4. 将代理对象保存到容器中作为对应的 bean 实例
 
-     
+1. 在创建 bean 实例之前，调用对应的 postProcessBeforeInstantiation() 方法
+
+   ```java
+   @Override
+   public Object postProcessBeforeInstantiation(Class<?> beanClass, String beanName) {
+   
+       Object cacheKey = getCacheKey(beanClass, beanName);
+   
+       /*
+       StringUtils.hasLength(String): 判断字符串不为 null 且 不为空
+       this.targetSourcedBeans：空集合
+       */
+       if (!StringUtils.hasLength(beanName) || !this.targetSourcedBeans.contains(beanName)) {
+           /// adviseBeans: 保存不需要创建代理对象和已经创建过代理对象的 bean id
+           if (this.advisedBeans.containsKey(cacheKey)) {
+               return null;
+           }
+           /*
+             不需要创建 bean 代理对象
+             	1) 当前 bean 继承了 Advice、Pointcut、Advisor、AopInfrastructureBean 
+             	2) 当前 bean 实例为切面类
+             	3) shouldSkip() - 当 bean 实例为 AspectJPointcutAdvisor 子类且为候选的增强器 bean 实例
+                 	if (advisor instanceof AspectJPointcutAdvisor &&
+     						((AspectJPointcutAdvisor) advisor).getAspectName().equals(beanName)) {
+     					return true;
+     				}
+     				return super.shouldSkip(beanClass, beanName); // return false;
+             */
+           if (isInfrastructureClass(beanClass) || shouldSkip(beanClass, beanName)) {
+               this.advisedBeans.put(cacheKey, Boolean.FALSE);
+               return null;
+           }
+       }
+   
+       TargetSource targetSource = getCustomTargetSource(beanClass, beanName);
+       if (targetSource != null) {
+           if (StringUtils.hasLength(beanName)) {
+               this.targetSourcedBeans.add(beanName);
+           }
+           Object[] specificInterceptors = getAdvicesAndAdvisorsForBean(beanClass, beanName, targetSource);
+           Object proxy = createProxy(beanClass, beanName, specificInterceptors, targetSource);
+           this.proxyTypes.put(cacheKey, proxy.getClass());
+           return proxy;
+       }
+   
+       return null;
+   }
+   ```
+
+2. 当没能在创建 bean 实例前创建对应的代理对象时，会在**bean 实例的初始化工作之后**
+
+   调用 `AbstractAutoProxyCreator.postProcessAfterInitialization()`  -> **wrapIfNecessary**() - 在需要时进行包装
+
+   ```java
+   protected Object wrapIfNecessary(Object bean, String beanName, Object cacheKey) {
+       if (StringUtils.hasLength(beanName) && this.targetSourcedBeans.contains(beanName)) {
+           return bean;
+       }
+       // 判断当前的 bean 实例是否不需要代理对象
+       if (Boolean.FALSE.equals(this.advisedBeans.get(cacheKey))) {
+           return bean;
+       }
+       // 和 3 中一样，判断对应 bean 实例是否需要创建代理对象
+       if (isInfrastructureClass(bean.getClass()) || shouldSkip(bean.getClass(), beanName)) {
+           this.advisedBeans.put(cacheKey, Boolean.FALSE);
+           return bean;
+       }
+   
+       // 通过 getAdvicesAndAdvisorsForBean() 获取适用于当前 bean 的通知方法
+       Object[] specificInterceptors = getAdvicesAndAdvisorsForBean()(bean.getClass(), beanName, null);
+       // 如果不为 NULL(DO_NOT_PROXY)
+       if (specificInterceptors != DO_NOT_PROXY) {
+           // 添加到 advisedBeans 中标识已经创建过代理对象
+           this.advisedBeans.put(cacheKey, Boolean.TRUE);
+           // 创建代理对象
+           Object proxy = createProxy(
+               bean.getClass(), beanName, specificInterceptors, new SingletonTargetSource(bean));
+           this.proxyTypes.put(cacheKey, proxy.getClass());
+           return proxy;
+       }
+   
+       this.advisedBeans.put(cacheKey, Boolean.FALSE);
+       return bean;
+   }
+   ```
+
+3. getAdvicesAndAdvisorsForBean() 获取适用于指定 bean 实例增强器(通知方法) -> findEligibleAdvisors()
+
+   ```java
+   protected List<Advisor> findEligibleAdvisors(Class<?> beanClass, String beanName) {
+       // 获取所有候选的增强器(通知方法)
+       List<Advisor> candidateAdvisors = findCandidateAdvisors();
+       // 获取支持当前 bean 实例的增强器
+       List<Advisor> eligibleAdvisors = findAdvisorsThatCanApply(candidateAdvisors, beanClass, beanName);
+       extendAdvisors(eligibleAdvisors);
+       if (!eligibleAdvisors.isEmpty()) {
+           // 排序
+           eligibleAdvisors = sortAdvisors(eligibleAdvisors);
+       }
+       return eligibleAdvisors;
+   }
+   ```
+
+4.  findAdvisorsThatCanApply() 获取适用于当前 bean 实例的增强器 
+
+   ```java
+   public static List<Advisor> findAdvisorsThatCanApply(List<Advisor> candidateAdvisors, Class<?> clazz) {
+       // 判断候选增强器是否为空
+       if (candidateAdvisors.isEmpty()) {
+           return candidateAdvisors;
+       }
+       // 创建一个容器，保存支持当前 bean 实例的增强器
+       List<Advisor> eligibleAdvisors = new ArrayList<>();
+       for (Advisor candidate : candidateAdvisors) {
+           if (candidate instanceof IntroductionAdvisor && canApply(candidate, clazz)) {
+               eligibleAdvisors.add(candidate);
+           }
+       }
+       boolean hasIntroductions = !eligibleAdvisors.isEmpty();
+       for (Advisor candidate : candidateAdvisors) {
+           if (candidate instanceof IntroductionAdvisor) {
+               // already processed
+               continue;
+           }
+           // 在这里通过 canApply() 方法判断当前遍历的增强器对象是否支持 bean 实例
+           if (canApply(candidate, clazz, hasIntroductions)) {
+               // 保存到容器中
+               eligibleAdvisors.add(candidate);
+           }
+       }
+       return eligibleAdvisors;
+   }
+   ```
+
+5. canApply() 中会根据 **切入点表达式** 判断是否支持当前 bean 实例
+
+6. 接(2): createProxy() -> ProxyFactory.getProxy() ->  ... -> DefaultAopProxyFactory.createAopProxy() - 创建代理对象
+
+   ```java
+   // (ProxyFactory) config
+   public AopProxy createAopProxy(AdvisedSupport config) throws AopConfigException {
+       if (!NativeDetector.inNativeImage() &&
+           (config.isOptimize() || config.isProxyTargetClass() || hasNoUserSuppliedProxyInterfaces(config))) {
+           // 从 config 获取目标对象
+           Class<?> targetClass = config.getTargetClass();
+           if (targetClass == null) {
+               throw new AopConfigException("TargetSource cannot determine target class: " +
+                                            "Either an interface or a target is required for proxy creation.");
+           }
+           // 判断目标对象是否实现接口 || 目标对象也是一个代理对象
+           if (targetClass.isInterface() || Proxy.isProxyClass(targetClass)) {
+               // 通过 JDK 动态代理创建代理对象
+               return new JdkDynamicAopProxy(config);
+           }
+           // 通过 cglib 动态代理创建代理对象
+           return new ObjenesisCglibAopProxy(config);
+       }
+       else {
+           return new JdkDynamicAopProxy(config);
+       }
+   }
+   ```
+
+7. 会将对应的代理对象作为对应的 bean 实例保存在组件中，通过容器获取，执行目标方法时，代理对象将会执行相应的通知方法
+
+#### 6) 目标方法执行
+
+> 容器中保存了对应组件的代理对象，这个对象中保存了一些详细的信息(增强器、目标对象、xxx)
+
+1. 调用目标方法执行 -> CglibAopProxy.#DynamicAdvisedInterceptor.intercept() 进行拦截
+
+   ```java
+   
+   @Override
+   @Nullable
+   public Object intercept(Object proxy, Method method, Object[] args, MethodProxy methodProxy) throws Throwable {
+       Object oldProxy = null;
+       boolean setProxyContext = false;
+       Object target = null;
+       // 获取目标源
+       TargetSource targetSource = this.advised.getTargetSource();
+       try {
+           if (this.advised.exposeProxy) {
+               oldProxy = AopContext.setCurrentProxy(proxy);
+               setProxyContext = true;
+           }
+           // 从目标源中获取目标对象 target
+           target = targetSource.getTarget();
+           Class<?> targetClass = (target != null ? target.getClass() : null);
+           // 1. 根据需要执行的方法和目标对象获取对应的拦截器链
+           List<Object> chain = this.advised.getInterceptorsAndDynamicInterceptionAdvice(method, targetClass);
+           Object retVal;
+           // 2. 如果拦截器链为空，就直接执行目标方法
+           if (chain.isEmpty() && Modifier.isPublic(method.getModifiers())) {
+               Object[] argsToUse = AopProxyUtils.adaptArgumentsIfNecessary(method, args);
+               retVal = methodProxy.invoke(target, argsToUse);
+           }
+           else {
+               // 3. 创建一个 CglibMethodInvocation 对象，通过 proceed() 方法执行
+               retVal = new CglibMethodInvocation(proxy, target, method, args, targetClass, chain, methodProxy).proceed();
+           }
+           retVal = processReturnType(proxy, target, method, retVal);
+           return retVal;
+       }
+       finally {
+           if (target != null && !targetSource.isStatic()) {
+               targetSource.releaseTarget(target);
+           }
+           if (setProxyContext) {
+               AopContext.setCurrentProxy(oldProxy);
+           }
+       }
+   }
+   ```
+
+   
+

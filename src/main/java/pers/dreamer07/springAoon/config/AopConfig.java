@@ -13,7 +13,7 @@ import pers.dreamer07.springAoon.service.BookService;
  * @create: 2021-03-02
  **/
 @Configuration
-@EnableAspectJAutoProxy
+@EnableAspectJAutoProxy(proxyTargetClass = true)
 public class AopConfig {
 
     @Bean
