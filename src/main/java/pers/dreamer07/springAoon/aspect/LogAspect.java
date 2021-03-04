@@ -1,7 +1,6 @@
 package pers.dreamer07.springAoon.aspect;
 
 import org.aspectj.lang.JoinPoint;
-import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.*;
 
 import java.util.Arrays;
@@ -47,14 +46,14 @@ public class LogAspect {
         System.out.println("@AfterThrowing: 抛出异常 " + exception);
     }
 
-    @Around("pointName()")
-    public Object Around(ProceedingJoinPoint joinPoint) throws Throwable {
-        System.out.println("@Around: 环绕前通知");
-        // 调用 joinPoint.proceed() 调用目标方法
-        Object result = joinPoint.proceed();
-        System.out.println("@Around: 环绕后通知");
-        return result;
-    }
+//    @Around("pointName()")
+//    public Object Around(ProceedingJoinPoint joinPoint) throws Throwable {
+//        System.out.println("@Around: 环绕前通知");
+//        // 调用 joinPoint.proceed() 调用目标方法
+//        Object result = joinPoint.proceed();
+//        System.out.println("@Around: 环绕后通知");
+//        return result;
+//    }
 
 
 }
