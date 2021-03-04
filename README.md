@@ -1852,3 +1852,36 @@
 
    ![image-20210304151051573](README.assets/image-20210304151051573.png)
 
+#### 8) Aop 原理分析
+
+1. 通过 @EnableAspectJAutoProxy 注册 AnnotationAwareAspectJAutoProxyCreator 组件的 bean 定义信息对象
+
+2. 创建 IOC 容器，调用 refresh() 方法刷新容器(初始化容器)
+
+   1. 调用 registerBeanPostProcessors(beanFactory) 注册所有的 bean 后置处理器
+
+   2. 调用 finishBeanFactoryInitialization() 注册所有单例非延迟的 bean 实例
+
+      > AnnotationAwareAspectJAutoProxyCreator 作为一个 InstantiationAwareBeanPostProcessor 接口的实现类
+      >
+      > 会拦截 bean 实例的创建
+
+      1. 创建 bean 实例前，调用 `postProcessBeforeInstantiation()` 方法判断能否为当前 bean 实例
+
+         注册一个代理对象，而不是手动注册，如果可以就直接返回；
+
+      2. 在 bean 实例初始化之后，判断当前 bean 实例是否需要增强
+
+         如果需要，就将增强器(Advisor：通知方法的包装类)与当前 bean 实例进行包装，创建代理对象并返回
+
+3. 从容器中获取对应的组件，此时该组件为对应的代理对象
+
+4. 执行目标方法
+
+   1. 通过 intercept() 方法进行拦截
+   2. 获取对应的拦截器链 -> 会将对应的增强器类包装成拦截器(Advisor -> MethodInterceptor)
+   3. 根据拦截器链的机制，保证目标方法和通知方法的顺序执行
+      - 正常执行：前置通知 -> 目标方法 -> 后置通知 -> 返回通知
+      - 异常执行：前置通知 -> 目标方法 -> 后置通知 -> 异常通知
+
+## 1.5 声明式事务
