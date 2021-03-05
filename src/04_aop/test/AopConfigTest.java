@@ -23,7 +23,7 @@ public class AopConfigTest {
     @Test
     public void test01(){
         BookService bookService = context.getBean(BookService.class);
-        bookService.div(0, 2);
+        bookService.div(2, 0);
     }
 
 }

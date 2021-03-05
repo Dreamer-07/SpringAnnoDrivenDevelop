@@ -1669,6 +1669,8 @@
 >       - 返回 MethodInterceptor List
 >    4. 保存到缓存中
 >    5. 返回拦截器链
+>
+> 拦截器链的机制：通过链式调用，保证目标方法和通知方法的执行顺序
 
 1. 调用目标方法执行 -> CglibAopProxy.#DynamicAdvisedInterceptor.intercept() 进行拦截
 
@@ -1842,7 +1844,7 @@
            ...
        }
        else {
-           // 执行当前增强器 - 不同的增强器会有不同的实现
+           // 执行当前增强器的 invoke() 方法 - 不同的增强器会有不同的实现
            return ((MethodInterceptor) interceptorOrInterceptionAdvice).invoke(this);
        }
    }
@@ -1851,6 +1853,9 @@
 2. 图示
 
    ![image-20210304151051573](README.assets/image-20210304151051573.png)
+   
+   - 除了**前置通知拦截器和环绕通知拦截器**(先执行通知方法)，其他通知都会先通过 `mi.proceed()` 方法执行下一个拦截器
+   - 等待目标方法执行返回之后，才会根据目标方法的不同执行情况执行对应的通知方法
 
 #### 8) Aop 原理分析
 
@@ -1885,3 +1890,202 @@
       - 异常执行：前置通知 -> 目标方法 -> 后置通知 -> 异常通知
 
 ## 1.5 声明式事务
+
+### 一、环境搭建
+
+1. 导入需要使用的依赖
+
+   ```xml
+   <!-- 导入数据库驱动 -->
+   <dependency>
+       <groupId>mysql</groupId>
+       <artifactId>mysql-connector-java</artifactId>
+       <version>8.0.21</version>
+   </dependency>
+   <!-- 导入 Spring 事务管理和 JDBC -->
+   <dependency>
+       <groupId>org.springframework</groupId>
+       <artifactId>spring-orm</artifactId>
+       <version>5.3.4</version>
+   </dependency>
+   <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-starter-web</artifactId>
+   </dependency>
+   <!-- Spring-Boot 整合 druid 数据源的启动器 -->
+   <dependency>
+       <groupId>com.alibaba</groupId>
+       <artifactId>druid-spring-boot-starter</artifactId>
+       <version>1.2.4</version>
+   </dependency>
+   ```
+
+2. 设计业务逻辑类和 DAO 类
+
+3. 使用 `@EnableTransactionManagement` 用于开启事务注解
+
+4. 在对应的业务逻辑方法上使用 `@Transactional` 注解对这个方法进行事务管理
+
+5. 如果没有使用 SpringBoot 还需要使用配置事务管理器
+
+   ```java
+   @Bean
+   public PlatformTransactionManager platformTransactionManager(DataSource dataSource){
+       /*
+       * 使用 Spring JDBC 自带的事务管理器，且还需要配置对应的数据源
+       * Spring 中的配置类中，当注册 @Bean 组件时使用的方法不会直接调用，而是从 Spring IOC 中获取
+       * */
+       return new DataSourceTransactionManager(dataSource);
+   }
+   ```
+
+
+### 二、源码分析
+
+#### 1) @EnableTransactionManagement 注解
+
+1. 使用· `@Import` 注解导入一个 TransactionManagementConfigurationSelector 组件，该组件实现了 ImportSelector 接口
+
+2. 根据使用 `@EnableTransactionManagement.mode`  属性，注册不同的 bean 实例
+
+   ```java
+   @Override
+   protected String[] selectImports(AdviceMode adviceMode) { // adviceMode == @EnableTransactionManagement.mode
+       switch (adviceMode) {
+           case PROXY: // 默认为 PROXY
+               return new String[] {AutoProxyRegistrar.class.getName(),
+                                    ProxyTransactionManagementConfiguration.class.getName()};
+           case ASPECTJ:
+               return new String[] {determineTransactionAspectClass()};
+           default:
+               return null;
+       }
+   }
+   ```
+
+3. 导入 **AutoProxyRegistrar** & **ProxyTransactionManagementConfiguration**
+
+   - AutoProxyRegistrar(注册器)：
+
+     最后也会调用 `AopConfigUtils.registerOrEscalateApcAsRequired()` 
+
+     向容器中注册一个 **InfrastructureAdvisorAutoProxyCreator** 的组件
+
+     - InfrastructureAdvisorAutoProxyCreator：
+
+       利用 bean 后置处理器的机制，在 bean 实例的初始化工作之后，对其进行包装，创建对应的代理对象
+
+       当目标方法执行时，通过拦截器链拦截目标方法的执行
+
+4. **ProxyTransactionManagementConfiguration**：事务管理的配置类
+
+   1. 注册 BeanFactoryTransactionAttributeSourceAdvisor(事务属性增强器)
+
+      - 需要 TransactionAttributeSource & TransactionInterceptor 组件
+
+   2. 注册 TransactionAttributeSource(事务属性管理器)：
+
+      - 会根据不同的环境，注册不同的解析器(用来解析事务注解)，
+      - Spring 中使用 SpringTransactionAnnotationParser，用来解析 `@Transitional` 注解及其信息
+
+   3. 注册 TransactionInterceptor(事务拦截器)
+
+      - 需要 TransactionAttributeSource 组件
+
+      - 当目标方法执行时会通过 `invoke()` 方法进行拦截，调用 `invokeWithinTransaction()` 完成事务通知和目标方法的调用
+
+        ```java
+        /*
+        method：目标方法
+        targetClass：目标对象
+        invocation：回调函数对象，用来处理拦截器链链和目标方法的执行
+        */
+        @Nullable
+        protected Object invokeWithinTransaction(Method method, @Nullable Class<?> targetClass,
+                                                 final InvocationCallback invocation) throws Throwable {
+        
+            // 获取事务属性管理器
+            TransactionAttributeSource tas = getTransactionAttributeSource();
+            // 获取事务属性
+            final TransactionAttribute txAttr = (tas != null ? tas.getTransactionAttribute(method, targetClass) : null);
+            // 获取事务管理器
+            final TransactionManager tm = determineTransactionManager(txAttr);
+        
+            // 判断是否实现 ReactiveTransactionManager(响应式事务管理器)
+            if (this.reactiveAdapterRegistry != null && tm instanceof ReactiveTransactionManager) {
+                ...
+            }
+        
+            // 将事务管理器转换为 PlatformTransactionManager 类型的
+            PlatformTransactionManager ptm = asPlatformTransactionManager(tm);
+            // 通过方法和目标对象以及事务属性，获取标识连接点的字符串
+            final String joinpointIdentification = methodIdentification(method, targetClass, txAttr);
+        
+            if (txAttr == null || !(ptm instanceof CallbackPreferringPlatformTransactionManager)) {
+                // 如果需要的话，创建一个事务信息列
+                TransactionInfo txInfo = createTransactionIfNecessary(ptm, txAttr, joinpointIdentification);
+        
+                Object retVal;
+                try {
+                    // 执行目标方法
+                    retVal = invocation.proceedWithInvocation();
+                }
+                catch (Throwable ex) {
+                    // 如果抛出异常，即通过事务管理器进行回滚
+                    completeTransactionAfterThrowing(txInfo, ex);
+                    throw ex;
+                }
+                finally {
+                    // 清除事务信息 - 重置线程锁
+                    cleanupTransactionInfo(txInfo);
+                }
+        
+                if (retVal != null && vavrPresent && VavrDelegate.isVavrTry(retVal)) {
+                    // Set rollback-only in case of Vavr failure matching our rollback rules...
+                    TransactionStatus status = txInfo.getTransactionStatus();
+                    if (status != null && txAttr != null) {
+                        retVal = VavrDelegate.evaluateTryFailure(retVal, txAttr, status);
+                    }
+                }
+        		// 如果正常执行，就通过事务管理器提交事务
+                commitTransactionAfterReturning(txInfo);
+                return retVal;
+            }
+        	...
+        }
+        ```
+
+#### 2) 总结
+
+1. 通过 `@EnableTransactionManagement` 注解注册一个 TransactionManagementConfigurationSelector  组件
+
+2. 导入两个组件( **AutoProxyRegistrar** & **ProxyTransactionManagementConfiguration**)
+
+3. **AutoProxyRegistrar** 注册器负责向 IOC 注册一个 InfrastructureAdvisorAutoProxyCreator 组价
+
+   - 该组件利用 bean 后置处理器的机制，在对应 bean 实例初始化之后，将对应的增强器和 bean 实例进行包装
+
+     成一个代理对象后放回，该代理对象会在目标方法执行时，通过相应的拦截器进行拦截
+
+4. **ProxyTransactionManagementConfiguration**：事务管理配置类
+
+   - 注册 BeanFactoryTransactionAttributeSourceAdvisor(事务增强器)：事务属性解析器 + 事务拦截器
+
+   - 注册 TransactionAttributeSource(事务属性解析器)：会根据不同的环境，使用不同的解析器
+
+     通过 SpringTransactionAnnotationParser 用来解析 `@Transitional` 注解及其信息
+
+   - 注册 **TransactionInterceptor(事务拦截器)**：
+
+     该拦截器会在目标方法执行时进行拦截，调用 `invokeWithinTransaction()` 完成事务通知和目标方法的调用
+
+     1. 通过配置的 TransactionAttributeSource 获取事务相关的属性
+
+     2. 获取事务管理器 TransactionManager，同归传入的`InvocationCallback.proceedWithInvocation()` 方法调用 `proceed()`
+
+        执行下一个拦截器(拦截器链)，直到目标方法执行后返回
+
+     3. 根据目标方法的执行情况，如果通过**事务管理器**抛出异常就进行回滚
+
+        如果正常执行就通过**事务管理器**提交事务
+
