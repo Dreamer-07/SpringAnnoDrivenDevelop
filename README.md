@@ -1979,7 +1979,7 @@
 
 4. **ProxyTransactionManagementConfiguration**：事务管理的配置类
 
-   1. 注册 BeanFactoryTransactionAttributeSourceAdvisor(事务属性增强器)
+   1. 注册 BeanFactoryTransactionAttributeSourceAdvisor(事务增强器)
 
       - 需要 TransactionAttributeSource & TransactionInterceptor 组件
 
@@ -2022,7 +2022,7 @@
             final String joinpointIdentification = methodIdentification(method, targetClass, txAttr);
         
             if (txAttr == null || !(ptm instanceof CallbackPreferringPlatformTransactionManager)) {
-                // 如果需要的话，创建一个事务信息列
+                // 如果需要的话，创建一个事务信息对象
                 TransactionInfo txInfo = createTransactionIfNecessary(ptm, txAttr, joinpointIdentification);
         
                 Object retVal;
@@ -2085,7 +2085,33 @@
 
         执行下一个拦截器(拦截器链)，直到目标方法执行后返回
 
-     3. 根据目标方法的执行情况，如果通过**事务管理器**抛出异常就进行回滚
+     3. 根据目标方法的执行情况，
 
+        如果通过**事务管理器**抛出异常就进行回滚
+        
         如果正常执行就通过**事务管理器**提交事务
 
+# 第二章 扩展原理
+
+## 2.1 BeanFactoryPostProcessor
+
+- 作用：在 beanFactory 初始化之后调用，可以用来修改/定制 beanFactory 中的内容
+- 执行时机：在 BeanFactory 标准初始化之后执行，此时所有的 **bean 定义信息都已经被加载，但对应的 bean 实例还未创建**
+- 原理
+  1. 创建容器时，通过 `refresh() -> invokeBeanFactoryPostProcessors()` 执行所有  BeanFactoryPostProcessor
+  2. 通过 `beanFactory.getBeanNamesForType(BeanFactoryPostProcessor.class...)` 得到所有的相关 bean id
+  3. 根据实现的不同接口进行分类(PriorityOrdered,Ordered, and other)
+  4. 创建对应的 List 容器，创建对应的 bean 实例保存至其中后，进行遍历
+  5. 遍历不同容器中的所有 BeanFactoryBeanProcessor 执行相应的 `postProcessBeanFactory()` 方法
+
+## 2.2 BeanDefinitionRegistryPostProcessor
+
+- 作用：用来修改 bean 定义信息
+- 执行时机：在所以的 **bean 定义信息将要被加载，且 bean 实例还未创建**
+- 原理
+
+## 2.3 ApplicationListener
+
+## 2.4 SmartInitializingSingleton
+
+## 2.5 Spring 创建容器的过程
