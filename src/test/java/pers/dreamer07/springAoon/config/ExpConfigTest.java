@@ -2,6 +2,7 @@ package pers.dreamer07.springAoon.config;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationEvent;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 /**
@@ -17,6 +18,16 @@ public class ExpConfigTest {
     public void test01(){
         // MyBeanFactoryPostProcessor.postProcessBeanFactory() 方法执行早于 Person 组件的创建
         AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext(ExpConfig.class);
+
+        // 通过 context.publishEvent 容器发布事件
+        context.publishEvent(new ApplicationEvent(new String("发布事件")) {
+            @Override
+            public Object getSource() {
+                return super.getSource();
+            }
+        });
+
+        // 关闭容器
         context.close();
     }
 

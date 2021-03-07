@@ -2107,10 +2107,71 @@
 ## 2.2 BeanDefinitionRegistryPostProcessor
 
 - 作用：用来修改 bean 定义信息
+
 - 执行时机：在所以的 **bean 定义信息将要被加载，且 bean 实例还未创建**
-- 原理
+
+- 注意：**BeanDefinitionRegistryPostProcessor** 的执行早于 **BeanFactoryPostProcessor**
+
+- 原理：
+
+  1. 启动容器 -> refresh() -> invokeBeanFactoryPostProcessors()
+
+  2. 通过 beanFactory.getBeanNamesForType() 获取容器中的所有 **BeanDefinitionRegistryPostProcessor**
+
+  3. 根据实现的不同的接口(PriorityOrdered, Order, other) 添加到对应的 List 容器中
+
+  4. 进行排序和对应的 bean 实例注册
+
+  5. 通过 invokeBeanDefinitionRegistryPostProcessors() 执行所有
+
+     **BeanDefinitionRegistryPostProcessor**.postProcessBeanDefinitionRegistry() 方法
+
+  6. 执行对应的 **BeanDefinitionRegistryPostProcessor**.postProcessBeanFactory()
+
+  7. 执行其他 BeanFactoryPostProcessor.postProcessorBeanFactory() 方法
 
 ## 2.3 ApplicationListener
+
+- 作用：监听 IOC 容器中发布的事件，并可以进行相关处理(事件驱动模型开发) 
+
+- 执行实际，容器中发布了对应的监听类实例事件
+
+- 使用
+
+  1. 创建一个类，实现 ApplicationListener 接口监听容器发布的事件
+
+     每当有对应的监听事件(这里只实现接口时指定的泛型类及其子类)发布时，就会触发`onApplicationEvent()`方法
+
+     ```java
+     public class MyApplicationListener implements ApplicationListener<ApplicationEvent> {
+     
+         /**
+          * 每当有对应的监听事件(这里是 ApplicationEvent 及其实现类)发布时，就会触发该方法
+          * @param event
+          */
+         @Override
+         public void onApplicationEvent(ApplicationEvent event) {
+             System.out.println("发布事件：" + event);
+         }
+     
+     }
+     ```
+
+  2. 在 IOC 容器中注册对应的组件
+
+  3. 发布相关的事件，触发监听器
+
+     ```java
+     // 通过 context.publishEvent 容器发布事件
+     context.publishEvent(new ApplicationEvent(new String("发布事件")) {
+         @Override
+         public Object getSource() {
+             return super.getSource();
+         }
+     });
+     ```
+
+     
 
 ## 2.4 SmartInitializingSingleton
 
