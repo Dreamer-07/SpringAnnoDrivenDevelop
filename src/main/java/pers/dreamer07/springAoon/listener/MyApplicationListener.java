@@ -19,4 +19,5 @@ public class MyApplicationListener implements ApplicationListener<ApplicationEve
         System.out.println("发布事件：" + event);
     }
 
+
 }

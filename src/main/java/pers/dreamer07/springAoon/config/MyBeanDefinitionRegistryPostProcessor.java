@@ -20,7 +20,7 @@ import pers.dreamer07.springAoon.bean.Person;
  *      5) 通过 invokeBeanDefinitionRegistryPostProcessors() 执行所有
  *         BeanDefinitionRegistryPostProcessor.postProcessBeanDefinitionRegistry() 方法
  *      6) 执行对应的 BeanDefinitionRegistryPostProcessor.postProcessBeanFactory()
- *      7) `执行其他 BeanFactoryPostProcessor.postProcessorBeanFactory() 方法`
+ *      7) 执行其他 BeanFactoryPostProcessor.postProcessorBeanFactory() 方法`
  *  注意：BeanDefinitionRegistryPostProcessor 的执行早于 BeanFactoryPostProcessor
  * @program: springAoon
  * @description:

@@ -363,7 +363,7 @@
 
 ### **二、扩展类**
 
-#### 1) AnnotationConfigApplicationContext：
+#### 1) AnnotationConfigApplicationContext
 
 - 概念：ApplicationContext 接口的实现类，用于创建配置类的 IOC 容器对象
 
@@ -1215,7 +1215,7 @@
 
 1. 从创建 IOC 容器开始，调用 refresh() 刷新容器(初始化容器)
 
-2. 可以发现会回调一个 `registerBeanPostProcessors(beanFactory)` 方法，该方法用于创建**拦截 bean 实例创建的 bean 后置处理器**
+2. 会调用 `registerBeanPostProcessors(beanFactory)` 方法，该方法用于创建**拦截 bean 实例创建的 bean 后置处理器**
 
 3. registerBeanPostProcessors() 实现的具体步骤
 
@@ -2106,7 +2106,7 @@
 
 ## 2.2 BeanDefinitionRegistryPostProcessor
 
-- 作用：用来修改 bean 定义信息
+- 作用：用来修改 bean 定义信息 
 
 - 执行时机：在所以的 **bean 定义信息将要被加载，且 bean 实例还未创建**
 
@@ -2134,7 +2134,7 @@
 
 - 作用：监听 IOC 容器中发布的事件，并可以进行相关处理(事件驱动模型开发) 
 
-- 执行实际，容器中发布了对应的监听类实例事件
+- 执行时机：容器中发布了对应的监听类实例事件
 
 - 使用
 
@@ -2171,7 +2171,116 @@
      });
      ```
 
-     
+- 事件派发流程
+
+  1. 通过 IOC.publishEvent() 发布一个事件 -> AbstractApplicationContext.publishEvent()
+
+  2. 通过 `getApplicationEventMulticaster()` 获取一个传播器(派发期)，再通过其 `multicastEvent(applicationEvent, eventType)` 方法派发事件
+
+     ```java
+     @Override
+     public void multicastEvent(final ApplicationEvent event, @Nullable ResolvableType eventType) {
+         ResolvableType type = (eventType != null ? eventType : resolveDefaultEventType(event));
+         // 获取异步执行器
+         Executor executor = getTaskExecutor();
+         // 根据派发事件类型获取所有的监听器
+         for (ApplicationListener<?> listener : getApplicationListeners(event, type)) {
+             // 执行对应的监听器
+             if (executor != null) {
+                 executor.execute(() -> invokeListener(listener, event));
+             }
+             else {
+                 invokeListener(listener, event);
+             }
+         }
+     }
+     ```
+
+  3. 会调用对应监听器的 `onApplicationEvent()` 方法进行事件处理
+
+- ApplicationEventMulticaster：派发器(传播器)的创建时机
+
+  - refresh() -> initApplicationEventMulticaster()
+
+    ```java
+    protected void initApplicationEventMulticaster() {
+        ConfigurableListableBeanFactory beanFactory = getBeanFactory();
+        // 判断容器中是 id 为 applicationEventMulticaster 的 bean 实例
+        if (beanFactory.containsLocalBean(APPLICATION_EVENT_MULTICASTER_BEAN_NAME)) {
+            this.applicationEventMulticaster =
+                beanFactory.getBean(APPLICATION_EVENT_MULTICASTER_BEAN_NAME, ApplicationEventMulticaster.class);
+            if (logger.isTraceEnabled()) {
+                logger.trace("Using ApplicationEventMulticaster [" + this.applicationEventMulticaster + "]");
+            }
+        }
+        // 如果没有就手动创建对应的 bean 实例后注册
+        else {
+            this.applicationEventMulticaster = new SimpleApplicationEventMulticaster(beanFactory);
+            beanFactory.registerSingleton(APPLICATION_EVENT_MULTICASTER_BEAN_NAME, this.applicationEventMulticaster);
+            if (logger.isTraceEnabled()) {
+                logger.trace("No '" + APPLICATION_EVENT_MULTICASTER_BEAN_NAME + "' bean, using " +
+                             "[" + this.applicationEventMulticaster.getClass().getSimpleName() + "]");
+            }
+        }
+    }
+    ```
+
+- Listener(监听器) 的创建的时机
+
+  - refresh() -> registerListeners()
+
+    ```java
+    protected void registerListeners() {
+        // 先从容器中获取
+        for (ApplicationListener<?> listener : getApplicationListeners()) {
+            getApplicationEventMulticaster().addApplicationListener(listener);
+        }
+    
+        // 获取容器中所有监听器的 id
+        String[] listenerBeanNames = getBeanNamesForType(ApplicationListener.class, true, false);
+        // 将所有的监听器保存到派发器中
+        for (String listenerBeanName : listenerBeanNames) {
+            getApplicationEventMulticaster().addApplicationListenerBean(listenerBeanName);
+        }
+    
+        // Publish early application events now that we finally have a multicaster...
+        Set<ApplicationEvent> earlyEventsToProcess = this.earlyApplicationEvents;
+        this.earlyApplicationEvents = null;
+        if (!CollectionUtils.isEmpty(earlyEventsToProcess)) {
+            for (ApplicationEvent earlyEvent : earlyEventsToProcess) {
+                getApplicationEventMulticaster().multicastEvent(earlyEvent);
+            }
+        }
+    }
+    ```
+
+- Executor：执行器，SpringMVC 中有对应的 AsyncExcutor(异步执行器) & SyncExcutor(同步执行器)
+
+## 2.4 @EventListener
+
+- 使用：作用在方法中，代表该方法将作为一个监听器，监听指定类型事件的发布
+
+  ```java
+  /**
+  * @EventListener: 标识该方法为一个监听器
+  *      classes: 属性指定为要监听的事件类型
+  * @param event: 对应的事件对象会通过参数的形式注册进来
+  */
+  @EventListener(classes = {MyApplicationEvent.class})
+  public void listener(ApplicationEvent event){
+      System.out.println("监听到自定义事件：" + event);
+  }
+  ```
+
+- 实现原理 -> EventListenerMethodProcessor 类
+
+  - 该类实现了 **SmartInitializingSingleton**  接口，其中带有一个 `afterSingletonsInstantiated()` 方法
+  - `afterSingletonsInstantiated()`方法：在所有非延迟单实例 bean 创建之后调用
+  - 执行时机：在所有非延迟单实例 bean 创建之后执行
+    1. refresh() -> finishBeanFactoryInitialization(注册所有非延迟单实例 bean) -> preInstantiateSingletons()
+    2. 获取容器中所有的 bean 实例 id，通过 getBean() 创建对应的 bean 实例并注册到容器中
+    3. 遍历所有的 bean 实例 id，判断对应的 bean 实例是否实现 **SmartInitializingSingleton** 接口 
+    4. 调用对应的 `afterSingletonsInstantiated()` 方法
 
 ## 2.4 SmartInitializingSingleton
 

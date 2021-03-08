@@ -1,10 +1,9 @@
 package pers.dreamer07.springAoon.config;
 
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Import;
 import pers.dreamer07.springAoon.bean.Person;
-import pers.dreamer07.springAoon.listener.MyApplicationListener;
 
 /**
  * 扩展原理
@@ -18,7 +17,8 @@ import pers.dreamer07.springAoon.listener.MyApplicationListener;
 @Configuration
 // @Import(MyBeanFactoryPostProcessor.class) // 测试 BeanFactoryPostProcessor 用
 // @Import(MyBeanDefinitionRegistryPostProcessor.class) // 测试 BeanDefinitionRegistryPostProcessor 用
-@Import(MyApplicationListener.class) // 测试 ApplicationListener
+// @Import(MyApplicationListener.class) // 测试 ApplicationListener
+@ComponentScan(value = "pers.dreamer07.springAoon") // 测试 @EventListener 注解
 public class ExpConfig {
 
     @Bean
