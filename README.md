@@ -2256,7 +2256,7 @@
 
 - Executor：执行器，SpringMVC 中有对应的 AsyncExcutor(异步执行器) & SyncExcutor(同步执行器)
 
-## 2.4 @EventListener
+## 2.4 @EventListener & SmartInitializingSingleton
 
 - 使用：作用在方法中，代表该方法将作为一个监听器，监听指定类型事件的发布
 
@@ -2282,6 +2282,182 @@
     3. 遍历所有的 bean 实例 id，判断对应的 bean 实例是否实现 **SmartInitializingSingleton** 接口 
     4. 调用对应的 `afterSingletonsInstantiated()` 方法
 
-## 2.4 SmartInitializingSingleton
-
 ## 2.5 Spring 创建容器的过程
+
+> refresh() 方法中的执行细节
+
+### 一、BeanFactory 的创建与初始化工作
+
+> 其实 IOC 容器中保存的就是一些 Map(组件，环境信息等)
+
+#### 1) prepareRefresh()：进行一些初始化容器前的相关工作
+
+1. 记录当前的时间、容器的状态等
+
+2. initPropertySources(): 初始化属性的设置；Spring 中没有具体的实现，可以通过继承 **AbstractApplicationContext** 类
+
+   实现该方法，进行一些个性化的属性设置
+
+3. getEnvironment().validateRequiredProperties(): 完成属性校验，保证属性的正确性
+
+4. 创建两个 Set 容器，用来保存早期的监听器(Listener)和事件(Event)
+
+#### 2) obtainFreshBeanFactory()：获取 BeanFctory 对象
+
+1. refreshBeanFactory(): 设置 beanFactory 的一些属性(序列化 id 等)
+
+#### 3) prepareBeanFactory(): 对 beanFactory 进行初始化设置
+
+1. 注册需要使用的 BeanPostProcessor[ApplicationContextAwareProcessor]
+2. 注册忽略自动装配的接口
+3. 注册需要自动装配的接口
+4. 注册需要使用的 BeanPostProcessor[ApplicationListenerDetector]
+5. 添加编译时的 AspectJ
+6. 注册一些默认的 bean 实例
+   - environment -> ConfigurableEnvironment 类：当前容器运行的上下文环境
+   - systemProperties -> Map<String, Object> 类：当前环境中的系统属性
+   - systemEnvironment ->  Map<String, Object> 类：当前环境中的系统环境
+
+#### 4) postProcessBeanFactory()：子类可以通过实现该方法，对 BeanFactory 做进一步的设置
+
+#### 5) invokeBeanFactoryPostProcessors()：进行 BeanFactory 初始化之后的工作
+
+1. 获取所有实现了 **BeanFactoryPostProcessor** 接口的组件
+2. 判断当前的 beanFactory 是否实现 **BeanDefinitionRegistry** 接口(默认的 ConfigurableListableBeanFactory 是有的)
+3. 遍历所有 BeanFactoryPostProcessor  组件，判断其是否实现 **BeanDefinitionRegistryPostProcessor**
+   - 根据实现的不同接口进行分类(PriorityOrdered、Ordered、other)
+   - 排序并执行对应的 `postProcessBeanDefinitionRegistry()` 修改 bean 的定义信息
+   - 执行对应的 `postProcessBeanFactory()` 方法修改/定制 beanFactory 中的内容
+4. 通过 **BeanFactoryPostProcessor** 接口的实现类，执行对应的 `postProcessBeanFactory()` 修改/定制 beanFactory 中的内容
+
+### 二、注册组件
+
+#### 6) registerBeanPostProcessors()：注册 BeanPostProcessor 接口的组件，用于拦截 bean 实例的创建
+
+> 不同 BeanPostProcessor 子接口的实现类执行时机不一定相同
+
+1. 获取所有 BeanPostProcessor 接口组件的 id
+
+2. 根据不同的排序接口实现类(PriorityOrdered、Ordered、other) 进行分类
+
+3. 创建对应的 bean 实例 -> 排序 -> 注册到容器中
+
+4. 注册一个额外的 BeanPostProcessor(ApplicationListenerDetector) 该组件用来**在 bean 实例初始化之后**
+
+   判断该组件是否实现了 ApplicationContextLisntener 接口，如果有就将其进行保存
+
+#### 7) initMessageSource(): 初始化消息服务组件(主要实现国际化，数据解析等功能)
+
+1. 判断容器中是否有对应的 id(messageSource)  的 bean 实例
+
+2. 如果没有就创建一个 **DelegatingMessageSource** 类型的实例
+
+   该实例可以通过 `getMessage()` 方法读取对应配置文件中的国际化信息
+
+3. 将该对应的 id 和 bean 实例注册到容器中
+
+#### 8) initApplicationEventMulticaster()：初始化事件派发器
+
+1. 判断容器中是否存在对应的组件
+2. 如果没有，就创建 **SimpleApplicationEventMulticaster** 类的对象，并注册到组件中
+
+#### 9) onRefresh(): 子类扩展，额外定义 IOC 的初始化
+
+#### 10) registerListeners(): 创建并注册监听器组件
+
+1. 将早期配置的监听器保存在**派发器**中
+2. 获取容器中 ApplicationListener 接口实现类组件的 id，遍历添加到**派发器**中
+3. 将早期配置的事件进行派发
+
+#### 11) finishBeanFactoryInitialization(): 注册容器中所有剩下的非延迟单实例 bean 
+
+1. 调用 `beanFactory.preInstantiateSingletons()`
+
+2. 获取容器中所有 bean  id 以及对应的**定义信息对象**
+
+3. 通过定义信息对象，如果要创建的 bean 实例**是单实例的 & 不是抽象的 & 不是懒加载的**
+
+4. 判断是否是 FactoryBean 的 bean 实例，如果是就通过对应的 `getObject()` 获取对应的实例
+
+5. `getBean() -> doGetBean()` 获取对应的 bean 实例
+
+   1. 通过 getSingleton() 从缓存中获取对应的 bean 实例，如果存在通过 `getObjectForBeanInstance()` 进行包装后返回
+
+   2. 如果不存在，先通过 `markBeanAsCreated()` 对对应的 bean id 进行标识マーク(已经创建)，防止线程安全问题
+
+   3. 获取对应的定义信息对象，通过 `mbd.getDependsOn()` 获取当前 bean 实例依赖的 bean 实例
+
+   4. 优先初始化依赖的 bean 实例
+
+   5. 通过 `getSingleton()` 方法创建一个 ObjectFactory 的匿名实现类，再通过`singletonFactory.getObject() -> createBean()` 
+
+      1. 通过 `resolveBeforeInstantiation()` 方法判断能否通过 **InstantiationAwareBeanPostProcessors** 接口的
+
+         实现类创建一个代理对象，而不是手动注册一个 bean 实例
+
+         - 遍历对应的 BeanPostProcessors，通过 `applyBeanPostProcessorsBeforeInstantiation()` 执行其 `postProcessBeforeInstantiation()` 方法
+         - 如果前方法的返回结果不为 null，再通过 `applyBeanPostProcessorsAfterInitialization` 执行其  `postProcessAfterInitialization()` 方法进行二次包装后返回代理对象
+
+      2. 调用 `doCreateBean` 手动注册对应的 bean 实例
+
+         1. [创建 bean 实例]  `createBeanInstance(beanName, mbd, args)` 方法通过
+
+            对应的工厂方法(@Bean 注解标注的方法)或反射创建对应的  bean 实例
+
+         2. [通过 MergedBeanDefinitionPostProcessor 扫描当前 bean 中的 @Value / @Autowired 注解] 
+
+            `applyMergedBeanDefinitionPostProcessors(mbd, beanType, beanName)` 调用所有 MergedBeanDefinitionPostProcessor 接口的实现类
+
+            并执行对应的 `postProcessMergedBeanDefinition(mbd, beanType, beanName)` 方法
+
+         3. [完成属性赋值] `populateBean()`
+
+            (在属性赋值之前)
+
+            1. 调用所有 **InstantiationAwareBeanPostProcessor** 接口的实现类的 `postProcessAfterInstantiation()` 方法
+
+            2. 调用所有 **InstantiationAwareBeanPostProcessor** 接口的实现类的 `postProcessProperties()` 方法，
+
+               获取由多个 PropertyValue(属性名:属性值) 构成的 PropertyValues 对象
+
+            3. [完成属性赋值] `applyPropertyValues(beanName, mbd, bw, pvs)`
+
+         4. [初始化 bean 实例] `initializeBean()`
+
+            1. [判断其是否实现 xxxAware 接口] `invokeAwareMethods(beanName, bean)`,如果实现了就通过相应的方法注入对应的组件
+
+            2. [进行初始化之前的工作] `applyBeanPostProcessorsBeforeInitialization(wrappedBean, beanName);`
+
+               遍历所有 BeanPostProcessor, 执行 `processor.postProcessBeforeInitialization(result, beanName);` 方法
+
+            3. [执行初始化] `invokeInitMethods(beanName, wrappedBean, mbd)`
+
+               1. 判断当前 bean 实例是否实现  **InitializingBean** 接口 - 执行对应的初始化方法 `afterPropertiesSet()`
+               2. 执行 @Bean 注解属性 initMethod 中的方法
+
+            4. [进行初始化之后的方法] `applyBeanPostProcessorsAfterInitialization(wrappedBean, beanName);`
+
+               遍历所有 BeanPostProcessor, 执行 `processor.postProcessAfterInitialization(result, beanName);` 方法
+
+         5. [如果有需要就注册对应的销毁方法] `registerDisposableBeanIfNecessary()`
+
+   6. [保存到对应的单例缓存中] `addSingleton(beanName, singletonObject);`
+
+6. [执行 `SmartInitializingSingleton.afterSingletonsInstantiated() `] 
+
+   在所有 bean 实例组件创建 & 初始化完成之后，遍历所有其的实现类后调用
+
+#### 12) finishRefresh()：发布相应的事件
+
+1. [初始化 **LifecycleProcessor** 生命周期组件] `initLifecycleProcessor()`
+   - 判断容器中是否有对应 id (lifecycleProcessor) 的 bean 实例
+   - 如果没有就创建一个 **DefaultLifecycleProcessor** 类对象并注册到容器中
+2. 执行 **LifecycleProcessor** 生命周期组件的 `onRefresh()` 方法
+3. [发布容器已经创建完成的事件] `publishEvent(new ContextRefreshedEvent(this));`
+
+### 三、总结
+
+
+
+
+
