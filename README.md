@@ -2294,9 +2294,7 @@
 
 1. 记录当前的时间、容器的状态等
 
-2. initPropertySources(): 初始化属性的设置；Spring 中没有具体的实现，可以通过继承 **AbstractApplicationContext** 类
-
-   实现该方法，进行一些个性化的属性设置
+2. initPropertySources(): 初始化属性的设置；Spring 中没有具体的实现，可以通过继承 **AbstractApplicationContext** 类，实现该方法，进行一些个性化的属性设置
 
 3. getEnvironment().validateRequiredProperties(): 完成属性校验，保证属性的正确性
 
@@ -2306,29 +2304,53 @@
 
 1. refreshBeanFactory(): 设置 beanFactory 的一些属性(序列化 id 等)
 
-#### 3) prepareBeanFactory(): 对 beanFactory 进行初始化设置
+#### 3) prepareBeanFactory(): 对 BeanFactory 进行初始化设置
 
 1. 注册需要使用的 BeanPostProcessor[ApplicationContextAwareProcessor]
+
 2. 注册忽略自动装配的接口
+
 3. 注册需要自动装配的接口
+
 4. 注册需要使用的 BeanPostProcessor[ApplicationListenerDetector]
+
+   ![image-20210309135312238](README.assets/image-20210309135312238.png)
+
 5. 添加编译时的 AspectJ
+
 6. 注册一些默认的 bean 实例
    - environment -> ConfigurableEnvironment 类：当前容器运行的上下文环境
    - systemProperties -> Map<String, Object> 类：当前环境中的系统属性
    - systemEnvironment ->  Map<String, Object> 类：当前环境中的系统环境
+   - ![image-20210309135448427](README.assets/image-20210309135448427.png)
 
-#### 4) postProcessBeanFactory()：子类可以通过实现该方法，对 BeanFactory 做进一步的设置
+#### 4) postProcessBeanFactory()：(子类实现) 对 BeanFactory 做进一步的设置
 
 #### 5) invokeBeanFactoryPostProcessors()：进行 BeanFactory 初始化之后的工作
 
-1. 获取所有实现了 **BeanFactoryPostProcessor** 接口的组件
+1. 获取早期注册的 BeanPostProcessor 组件
+
 2. 判断当前的 beanFactory 是否实现 **BeanDefinitionRegistry** 接口(默认的 ConfigurableListableBeanFactory 是有的)
-3. 遍历所有 BeanFactoryPostProcessor  组件，判断其是否实现 **BeanDefinitionRegistryPostProcessor**
-   - 根据实现的不同接口进行分类(PriorityOrdered、Ordered、other)
-   - 排序并执行对应的 `postProcessBeanDefinitionRegistry()` 修改 bean 的定义信息
+
+3. 先执行在容器中注册的 BeanFactoryPostProcessor 组件的 `postProcessBeanDefinitionRegistry()` 方法
+
+   ![image-20210309140004076](README.assets/image-20210309140004076.png)
+
+4. 获取容器中所有 BeanDefinitionRegistryPostProcessor 接口的实现类组件的 id
+
+   - 根据实现的不同接口进行分类(PriorityOrdered、Ordered、other)，先后创建对应的 bean 实例保存到容器中
+
+   - 排序、注册到容器中后，执行对应的 `postProcessBeanDefinitionRegistry()` 修改 bean 的定义信息
+
+     当一种类型(PriorityOrdered、Ordered、other)执行后清空容器，操作下一种类型
+
+     ![image-20210309140558002](README.assets/image-20210309140558002.png)
+
    - 执行对应的 `postProcessBeanFactory()` 方法修改/定制 beanFactory 中的内容
-4. 通过 **BeanFactoryPostProcessor** 接口的实现类，执行对应的 `postProcessBeanFactory()` 修改/定制 beanFactory 中的内容
+
+5. 获取容器中所有 BeanPostProcessor 组件的 id，按照优先级分类
+
+   依次排序并执行对应的 `postProcessBeanFactory()` 方法修改/定制 beanFactory 中的内容
 
 ### 二、注册组件
 
@@ -2338,13 +2360,17 @@
 
 1. 获取所有 BeanPostProcessor 接口组件的 id
 
-2. 根据不同的排序接口实现类(PriorityOrdered、Ordered、other) 进行分类
+   根据不同的排序接口实现类(PriorityOrdered、Ordered、other) 进行分类
 
-3. 创建对应的 bean 实例 -> 排序 -> 注册到容器中
+   ![image-20210309141408193](README.assets/image-20210309141408193.png)
+
+3. 创建对应的 bean 实例 -> 排序 -> (创建对应的 bean 实例) -> 注册到容器中
 
 4. 注册一个额外的 BeanPostProcessor(ApplicationListenerDetector) 该组件用来**在 bean 实例初始化之后**
 
    判断该组件是否实现了 ApplicationContextLisntener 接口，如果有就将其进行保存
+   
+   ![image-20210309141656395](README.assets/image-20210309141656395.png)
 
 #### 7) initMessageSource(): 初始化消息服务组件(主要实现国际化，数据解析等功能)
 
@@ -2366,8 +2392,12 @@
 #### 10) registerListeners(): 创建并注册监听器组件
 
 1. 将早期配置的监听器保存在**派发器**中
+
 2. 获取容器中 ApplicationListener 接口实现类组件的 id，遍历添加到**派发器**中
+
 3. 将早期配置的事件进行派发
+
+   ![image-20210309142156380](README.assets/image-20210309142156380.png)
 
 #### 11) finishBeanFactoryInitialization(): 注册容器中所有剩下的非延迟单实例 bean 
 
@@ -2379,11 +2409,21 @@
 
 4. 判断是否是 FactoryBean 的 bean 实例，如果是就通过对应的 `getObject()` 获取对应的实例
 
+   ![image-20210309142638957](README.assets/image-20210309142638957.png)
+
 5. `getBean() -> doGetBean()` 获取对应的 bean 实例
 
-   1. 通过 getSingleton() 从缓存中获取对应的 bean 实例，如果存在通过 `getObjectForBeanInstance()` 进行包装后返回
+   1. 通过 getSingleton() 从缓存中获取对应的 bean 实例，如果存在	通过 `getObjectForBeanInstance()` 进行包装后返回
+
+      ![image-20210309142829623](README.assets/image-20210309142829623.png)
 
    2. 如果不存在，先通过 `markBeanAsCreated()` 对对应的 bean id 进行标识マーク(已经创建)，防止线程安全问题
+
+      ```java
+      if (!typeCheckOnly) {
+          markBeanAsCreated(beanName);
+      }
+      ```
 
    3. 获取对应的定义信息对象，通过 `mbd.getDependsOn()` 获取当前 bean 实例依赖的 bean 实例
 
@@ -2391,12 +2431,15 @@
 
    5. 通过 `getSingleton()` 方法创建一个 ObjectFactory 的匿名实现类，再通过`singletonFactory.getObject() -> createBean()` 
 
+      ![image-20210309143146378](README.assets/image-20210309143146378.png)
+
       1. 通过 `resolveBeforeInstantiation()` 方法判断能否通过 **InstantiationAwareBeanPostProcessors** 接口的
 
-         实现类创建一个代理对象，而不是手动注册一个 bean 实例
+         组件创建一个代理对象，而不是手动注册一个 bean 实例
 
          - 遍历对应的 BeanPostProcessors，通过 `applyBeanPostProcessorsBeforeInstantiation()` 执行其 `postProcessBeforeInstantiation()` 方法
          - 如果前方法的返回结果不为 null，再通过 `applyBeanPostProcessorsAfterInitialization` 执行其  `postProcessAfterInitialization()` 方法进行二次包装后返回代理对象
+         - ![image-20210309144424349](README.assets/image-20210309144424349.png)
 
       2. 调用 `doCreateBean` 手动注册对应的 bean 实例
 
@@ -2426,26 +2469,67 @@
 
             1. [判断其是否实现 xxxAware 接口] `invokeAwareMethods(beanName, bean)`,如果实现了就通过相应的方法注入对应的组件
 
+               ![image-20210309145150193](README.assets/image-20210309145150193.png)
+
             2. [进行初始化之前的工作] `applyBeanPostProcessorsBeforeInitialization(wrappedBean, beanName);`
 
                遍历所有 BeanPostProcessor, 执行 `processor.postProcessBeforeInitialization(result, beanName);` 方法
 
-            3. [执行初始化] `invokeInitMethods(beanName, wrappedBean, mbd)`
-
-               1. 判断当前 bean 实例是否实现  **InitializingBean** 接口 - 执行对应的初始化方法 `afterPropertiesSet()`
+               ![image-20210309145304977](README.assets/image-20210309145304977.png)
+         
+         3. [执行初始化方法] `invokeInitMethods(beanName, wrappedBean, mbd)`
+         
+            1. 判断当前 bean 实例是否实现  **InitializingBean** 接口 - 执行对应的初始化方法 `afterPropertiesSet()`
+         
+               ```java
+                  boolean isInitializingBean = (bean instanceof InitializingBean);
+                  if (isInitializingBean && (mbd == null || !mbd.isExternallyManagedInitMethod("afterPropertiesSet"))) { ...
+                  ```
+         
                2. 执行 @Bean 注解属性 initMethod 中的方法
-
+         
+                  ```java
+                  if (mbd != null && bean.getClass() != NullBean.class) {
+                      String initMethodName = mbd.getInitMethodName();
+                      ...
+                  }
+                  ```
+         
             4. [进行初始化之后的方法] `applyBeanPostProcessorsAfterInitialization(wrappedBean, beanName);`
-
+         
                遍历所有 BeanPostProcessor, 执行 `processor.postProcessAfterInitialization(result, beanName);` 方法
-
+         
          5. [如果有需要就注册对应的销毁方法] `registerDisposableBeanIfNecessary()`
 
    6. [保存到对应的单例缓存中] `addSingleton(beanName, singletonObject);`
 
+      ```java
+      try {
+         // 通过传入的 ObjectFactory.getObject() 方法创建对应的 bean 实例 -> createBean
+         singletonObject = singletonFactory.getObject();
+         // 标记为新的单实例 bean
+         newSingleton = true;
+      }
+      catch (IllegalStateException ex) {
+          ...
+      }
+      catch (BeanCreationException ex) {
+          ...
+      }
+      finally {
+          ...
+      }
+      if (newSingleton) {
+         // 保存到单例缓存中
+         addSingleton(beanName, singletonObject);
+      }
+      ```
+
 6. [执行 `SmartInitializingSingleton.afterSingletonsInstantiated() `] 
 
-   在所有 bean 实例组件创建 & 初始化完成之后，遍历所有其的实现类后调用
+   在所有 bean 实例组件创建 & 初始化完成之后调用
+
+   ![image-20210309145809569](README.assets/image-20210309145809569.png)
 
 #### 12) finishRefresh()：发布相应的事件
 
@@ -2456,6 +2540,29 @@
 3. [发布容器已经创建完成的事件] `publishEvent(new ContextRefreshedEvent(this));`
 
 ### 三、总结
+
+#### 1) Spring bean 定义信息注册
+
+1. 通过 xml 标签 \<bean> 定义 bean 实例的信息
+2. 通过 @Bean 注解定义
+3. 通过 BeanDefinitionRegistry 组件自定义注册对应 bean 的定义信息对象
+
+#### 2) Spring bean 实例的创建时机
+
+1. 在需要的时候进行创建(BeanPostProcessor, Listener)
+2. 通过 `finishBeanFactoryInitialization()` 创建所有非延迟单实例 bean
+
+#### 3) BeanPostProcessor(bean后置处理器)
+
+1. 不同的 BeanPostProcessor 子接口的执行时机不相同
+2. 每一个 bean 的创建都会经过不同 bean 后置处理器，进行对应的功能增强
+   - 例：AnnotationAwareAspectJAutoProxyCreator：包装对应的增强器和 bean 实例为 Aop 代理对象
+3. 使用某些注解时，也会创建对应的 bean 后置处理器，用来增强 bean 实例
+   - 例：@EnableTransactionManagement -> InfrastructureAdvisorAutoProxyCreator 组件
+
+#### 4) Spring 事件驱动模型
+
+1. Event 通过**传播器**(EventMulticaster)向 Listener 发布事件
 
 
 
