@@ -2564,6 +2564,208 @@
 
 1. Event 通过**传播器**(EventMulticaster)向 Listener 发布事件
 
+# 第三章 Web
+
+## 3.1 servlet3.0
+
+### 一、注解开发
+
+1. @WebServlet：标识当前类是一个 Servlet 组件
+2. @WebFilter：标识当前类是一个 Filter 组件
+3. @WebListener：标识当前类是一个 Listener 组件
+
+### 二、共享库 & 运行时插件
+
+- 使用
+
+  1. Servlet 容器在启动时会扫描当前应用里的每一个 jar 包中 **ServletContainerInitializer** 的实现类
+
+  2. 在对应程序的 `META-INF/service/` 文件夹下创建一个名为 javax.servlet.ServletContainerInitializer 文件
+
+     该文件中保存  **ServletContainerInitializer** 的实现类的**全类名**
+
+  3.  **ServletContainerInitializer** 的实现类可以配合 `@HandlerType` 注解使用，可以将感兴趣的类型的实现类(子类)传入到对应的 `onStartup()` 方法中
+
+- 总结：
+
+  1. Servlet 容器在启动时，会扫描每一个 jar 包下的 `META-INF/service/javax.servlet.ServletContainerInitializer` 文件
+
+     会启动并运行 **ServletContainerInitializer** 的实现类的 `onStartup()` 方法
+
+  2. `onStartup(Set<Class<?>> arg0, ServletContext arg1)` 方法
+
+     可以通过该方法中的 ServletContext  形参动态的添加 **Servlet、Listener、Filter** 
+
+### 三、SpringMVC 整合 
+
+1. SpringMVC 对应的 jar 包下配置 SpringServletContainerInitializer 的创建
+
+   ```java
+   public void onStartup(@Nullable Set<Class<?>> webAppInitializerClasses, ServletContext servletContext)
+       throws ServletException {
+   
+       List<WebApplicationInitializer> initializers = Collections.emptyList();
+   
+       if (webAppInitializerClasses != null) {
+           initializers = new ArrayList<>(webAppInitializerClasses.size());
+           // 遍历导入的 WebApplicationInitializer 接口的子类
+           for (Class<?> waiClass : webAppInitializerClasses) {
+               // 如果不是接口 & 不是抽象类
+               if (!waiClass.isInterface() && !Modifier.isAbstract(waiClass.getModifiers()) &&
+                   WebApplicationInitializer.class.isAssignableFrom(waiClass)) {
+                   try {
+                       // 通过反射创建对象后添加到初始化器中
+                       initializers.add((WebApplicationInitializer)
+                                        ReflectionUtils.accessibleConstructor(waiClass).newInstance());
+                   }
+                   catch (Throwable ex) {
+                       throw new ServletException("Failed to instantiate WebApplicationInitializer class", ex);
+                   }
+               }
+           }
+       }
+   
+       if (initializers.isEmpty()) {
+           servletContext.log("No Spring WebApplicationInitializer types detected on classpath");
+           return;
+       }
+   
+       servletContext.log(initializers.size() + " Spring WebApplicationInitializers detected on classpath");
+       AnnotationAwareOrderComparator.sort(initializers);
+       for (WebApplicationInitializer initializer : initializers) {
+           // 遍历执行加载的 WebApplicationInitializer 组件的 onStartup() 方法
+           initializer.onStartup(servletContext);
+       }
+   }
+   ```
+
+2. 该组件会使用 `@HandlesTypes` 注解导入 **WebApplicationInitializer** 接口的实现类
+
+   1. AbstractContextLoaderInitializer
+
+      - 实现的 `onStartup()` 方法
+
+        ```java
+        @Override
+        public void onStartup(ServletContext servletContext) throws ServletException {
+            registerContextLoaderListener(servletContext);
+        }
+        protected void registerContextLoaderListener(ServletContext servletContext) {
+            // 创建一个根容器
+            WebApplicationContext rootAppContext = createRootApplicationContext();
+            if (rootAppContext != null) {
+                // 创建一个监听器，用来监听 IOC 容器的创建和关闭
+                ContextLoaderListener listener = new ContextLoaderListener(rootAppContext);
+                listener.setContextInitializers(getRootApplicationContextInitializers());
+                // 保存到全局 servletContext 容器中
+                servletContext.addListener(listener);
+            }
+            else {
+                logger.debug("No ContextLoaderListener registered, as " +
+                             "createRootApplicationContext() did not return an application context");
+            }
+        }
+        ```
+
+   2. AbstractDispatcherServletInitializer
+
+      - 实现的 `onStartup()` 方法
+
+        ```java
+        @Override
+        public void onStartup(ServletContext servletContext) throws ServletException {
+            super.onStartup(servletContext); // 调用父类 AbstractContextLoaderInitializer 类的方法
+            // 注册 DispatcherServlet
+            registerDispatcherServlet(servletContext);
+        }
+        
+        protected void registerDispatcherServlet(ServletContext servletContext) {
+            String servletName = getServletName();
+            Assert.hasLength(servletName, "getServletName() must not return null or empty");
+        	// 创建一个 web IOC 容器 WebApplicationContext
+            WebApplicationContext servletAppContext = createServletApplicationContext();
+            Assert.notNull(servletAppContext, "createServletApplicationContext() must not return null");
+        	// 创建 DispacterServlet 组件
+            FrameworkServlet dispatcherServlet = createDispatcherServlet(servletAppContext); // return new DispatcherServlet(servletAppContext);
+            Assert.notNull(dispatcherServlet, "createDispatcherServlet(WebApplicationContext) must not return null");
+            dispatcherServlet.setContextInitializers(getServletApplicationContextInitializers());
+        	// 将 dispacterServlet 组件注册到全局 servletContext 容器中
+            ServletRegistration.Dynamic registration = servletContext.addServlet(servletName, dispatcherServlet);
+            if (registration == null) {
+                throw new IllegalStateException("Failed to register servlet with name '" + servletName + "'. " +
+                                                "Check if there is another servlet registered under the same name.");
+            }
+        	// 设置 dispacterServlet 的属性
+            registration.setLoadOnStartup(1);
+            registration.addMapping(getServletMappings());
+            registration.setAsyncSupported(isAsyncSupported());
+        
+            // 注册添加 Filter
+            Filter[] filters = getServletFilters();
+            if (!ObjectUtils.isEmpty(filters)) {
+                for (Filter filter : filters) {
+                    registerServletFilter(servletContext, filter);
+                }
+            }
+        
+            customizeRegistration(registration);
+        }
+        ```
+
+   3. AbstractAnnotationConfigDispatcherServletInitializer - 用来处理通过注解配置的配置类
+
+      1. [创建父容器] 重写 `createRootApplicationContext()` 方法
+
+         ```java
+         protected WebApplicationContext createRootApplicationContext() {
+             // getRootConfigClasses() 抽象方法，获取对应的配置类
+             Class<?>[] configClasses = getRootConfigClasses();
+             if (!ObjectUtils.isEmpty(configClasses)) {
+                 // 通过配置类创建一个 Web 的 IOC 容器
+                 AnnotationConfigWebApplicationContext context = new AnnotationConfigWebApplicationContext();
+                 // 向容器中注册配置类
+                 context.register(configClasses);
+                 return context;
+             }
+             else {
+                 return null;
+             }
+         }
+         ```
+
+      2. [创建 web 容器] 重写 `createServletApplicationContext()` 方法
+
+         ```java
+         @Override
+         protected WebApplicationContext createServletApplicationContext() {
+             // 创建一个 Web 的 IOC 容器
+             AnnotationConfigWebApplicationContext context = new AnnotationConfigWebApplicationContext();
+             // getServletConfigClasses()：抽象方法，用来获取子容器的配置类
+             Class<?>[] configClasses = getServletConfigClasses();
+             if (!ObjectUtils.isEmpty(configClasses)) {
+                 // 注册到容器中
+                 context.register(configClasses);
+             }
+             return context;
+         }
+         ```
+
+3. 总结：
+
+   - 如果需要通过注解的方式启动 SpringMVC，则需要实现 `AbstractAnnotationConfigDispatcherServletInitializer()` 方法
+
+     用来配置对应的 Web IOC 容器和根容器的配置类
+
+   - 根容器就是 Spring IOC 容器，通常在该容器中用来配置 Service、dao 等数据和业务逻辑组件
+
+     Web 容器通常在该容器中配置和 Web 有关的组件(Controller、HandlerMapper等)
+
+     通过 Spring 注解 `@ComponentScan` 时。可以利用  **includeFilters & excludeFilters** 属性进行互补
+
+   - 定义 SpringMVC：[参考文档](https://docs.spring.io/spring-framework/docs/5.2.4.RELEASE/spring-framework-reference/web.html#mvc-config-customize )
+
+## 3.2 异步请求
+
 
 
 
