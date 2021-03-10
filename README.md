@@ -2484,7 +2484,7 @@
                ```java
                   boolean isInitializingBean = (bean instanceof InitializingBean);
                   if (isInitializingBean && (mbd == null || !mbd.isExternallyManagedInitMethod("afterPropertiesSet"))) { ...
-                  ```
+               ```
          
                2. 执行 @Bean 注解属性 initMethod 中的方法
          
@@ -2598,7 +2598,7 @@
 
 ### 三、SpringMVC 整合 
 
-1. SpringMVC 对应的 jar 包下配置 SpringServletContainerInitializer 的创建
+1. SpringMVC 对应的 jar 包下配置 SpringServletContainerInitializer 
 
    ```java
    public void onStartup(@Nullable Set<Class<?>> webAppInitializerClasses, ServletContext servletContext)
@@ -2763,10 +2763,123 @@
      通过 Spring 注解 `@ComponentScan` 时。可以利用  **includeFilters & excludeFilters** 属性进行互补
 
    - 定义 SpringMVC：[参考文档](https://docs.spring.io/spring-framework/docs/5.2.4.RELEASE/spring-framework-reference/web.html#mvc-config-customize )
+   
+     1. 开启 SpringMVC 高级功能 - 在对应的 Web 容器配置类上加上 `@EnableWebMvc` 注解
+     2. 定义 SpringMVC ：配置类实现 **WebMvcConfigurer**  类，重写对应的方法
 
 ## 3.2 异步请求
 
+### 一、Servlet 3.0 异步请求
 
+- 实例
+
+  ```java
+  // value 指定映射的地址； asyncSupported 是否支持异步，默认为 false
+  @WebServlet(value = "/book", asyncSupported = true)
+  public class BookServlet extends HttpServlet {
+  
+      /**
+       * SpringMVC 处理异步请求
+       * @param req
+       * @param resp
+       * @throws ServletException
+       * @throws IOException
+       */
+      @Override
+      protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+          // 1. 开启异步模式
+          AsyncContext asyncContext = req.startAsync();
+          // 2. 开启处理异步请求
+          asyncContext.start(() -> {
+              try {
+                  // 3. 开始业务逻辑
+                  Thread.sleep(3000);
+                  // 4. 告诉异步容器，逻辑逻辑即将处理完成
+                  asyncContext.complete();
+                  // 5. 响应
+                  ServletResponse response = asyncContext.getResponse();
+                  response.getWriter().write("阿巴巴");
+              } catch (InterruptedException | IOException e) {
+                  e.printStackTrace();
+              }
+          });
+      }
+  }
+  ```
+
+- Tomcat 处理异步请求模型
+
+  ![image-20210310090042496](README.assets/image-20210310090042496.png)
+
+  - 主线程和异步请求线程共享在一个线程池中，如果需要的话可以额外做一个异步请求线程池
+
+### 二、SpringMVC 异步请求
+
+#### 1) SpringMVC 异步请求处理模型
+
+![image-20210310085804588](README.assets/image-20210310085804588.png)
+
+
+
+- SpringMVC 会额外维护一个异步请求处理线程池
+
+#### 2) 处理器返回 Callable
+
+- 实例
+
+  ```java
+  @ResponseBody
+  @GetMapping("/get")
+  public Callable<String> getBook(){
+      return () -> {
+          Thread.sleep(3000);
+          return "阿巴阿巴";
+      };
+  }
+  ```
+
+- 原理
+
+  1. 当处理器方法的返回值类型是 **Callable** 时，SpringMVC 会将其交给 TaskExecutor 使用一个隔离的线程执行
+  2. DispactherServlet 和所有的 Filter 退出 web 容器的线程，但是 response 保持打开状态
+  3. Callable 返回的结果，SpringMVC 将请求重新派发给容器，恢复之前的处理
+  4. 根据 Callable 返回值，SpringMVC 重新进行渲染和等流程(处理请求 -> 视图渲染)
+
+#### 3) 处理器返回 DeferredResult 
+
+> 可以配合消息中间件一起使用
+
+- 实例
+
+  ```java
+  // 创建一个队列容器保存 DeferredResult
+  private Queue<DeferredResult<Object>> deferredResultQueue = new ConcurrentLinkedDeque<>();
+  
+  @ResponseBody
+  @RequestMapping("/createOrder")
+  public DeferredResult<Object> createOrder(){
+      // 创建一个对应的实例返回即可
+      DeferredResult<Object> deferredResult = new DeferredResult<>((long)3000, "create fail...");
+      // 使用一个容器保存其中
+      deferredResultQueue.add(deferredResult);
+      return deferredResult;
+  }
+  
+  public void createOrderIfNecessary(){
+      // 从容器中获取对应的 DeferredResult 对象
+      DeferredResult<Object> deferredResult = deferredResultQueue.poll();
+      // 设置需要的数据
+      if (deferredResult != null) {
+          deferredResult.setResult("阿巴巴");
+      }
+  }
+  ```
+
+- 说明
+
+  1. 只需要创建对应的 **DeferredResult** 类实例后返回接口
+  2. 当在任意位置通过该对象实例调用，`setResult(数据)` 设置数据后
+  3. 原控制器方法就会得到响应，间设置的数据返回
 
 
 
