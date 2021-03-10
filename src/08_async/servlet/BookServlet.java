@@ -16,7 +16,7 @@ import java.io.IOException;
  * @author: EMTKnight
  * @create: 2021-03-10
  **/
-// value 指定映射的地址； asyncSupported 是否支持异步，默认为 false
+// value 指定映射的地址; asyncSupported 是否支持异步，默认为 false
 @WebServlet(value = "/book", asyncSupported = true)
 public class BookServlet extends HttpServlet {
 

@@ -2564,6 +2564,151 @@
 
 1. Event 通过**传播器**(EventMulticaster)向 Listener 发布事件
 
+## 2.6 Spring 循环依赖
+
+> 流程图：
+>
+> <img src="README.assets/image-20210310202429597.png" alt="image-20210310202429597"  />
+
+1. 两个组件相互依赖
+
+   ```java
+   public class Master {
+       private Servant servant;
+   
+       @Autowired
+       public void setServant(Servant servant){
+           this.servant = servant;
+       }
+   }
+   
+   public class Servant {
+   
+       private Master master;
+   
+       @Autowired
+       public void setMaster(Master master){
+           this.master = master;
+       }
+   
+   }
+   ```
+
+2. [创建 Bean 实例] `doGetBean()`
+
+   ```java
+   protected  T doGetBean(final String name, @Nullable final Class requiredType,
+                          @Nullable final Object[] args, boolean typeCheckOnly) throws BeansException {
+   
+       // 尝试通过缓存获取对应的 bean 实例
+       Object sharedInstance = getSingleton(beanName);
+       ...
+           
+       // 如果是单实例 Bean
+       if (mbd.isSingleton()) {
+   
+           // 创建对应的 Bean 实例
+           sharedInstance = getSingleton(beanName, () -> {
+               try {
+                   // 尝试创建目标对象
+                   return createBean(beanName, mbd, args);
+               } catch (BeansException ex) {
+                   throw ex;
+               }
+           });
+       }
+       return (T) bean;
+   }
+   ```
+
+3. 当创建 Master 组件后，需要通过 `populateBean()` 为其注入 Servant 组件时
+
+4. 如果容器中不存在 Servant 组件，就会通过 `doCreateBean()` 创建组件，然后通过 `populateBean()` 为其注入 Master 组件
+
+   ```java
+   protected Object doCreateBean(final String beanName, final RootBeanDefinition mbd, final @Nullable Object[] args)
+       throws BeanCreationException {
+       BeanWrapper instanceWrapper = null;
+       if (mbd.isSingleton()) {
+           instanceWrapper = this.factoryBeanInstanceCache.remove(beanName);
+       }
+       // 创建 bean 对象
+       if (instanceWrapper == null) {
+           instanceWrapper = createBeanInstance(beanName, mbd, args);
+       }
+       // 判断Spring是否配置了支持提前暴露目标bean，也就是是否支持提前暴露半成品的bean
+       boolean earlySingletonExposure = (mbd.isSingleton() && this.allowCircularReferences 
+                                         && isSingletonCurrentlyInCreation(beanName));
+       if (earlySingletonExposure) {
+           /*
+           如果支持，这里就会当前生成的半成品 bean 放到 singletonFactories 中
+           singletonFactories：三级缓存容器,负责保存生成 bean 的单实例工厂
+           getEarlyBeanReference()：主要是直接将放入的第三个参数，也就是目标bean直接返回
+           */
+           addSingletonFactory(beanName, () -> getEarlyBeanReference(beanName, mbd, bean));
+       }
+       try {
+           // 在初始化实例之后，这里就是判断当前bean是否依赖了其他的bean，如果依赖了，就会递归的调用getBean()方法尝试获取目标bean
+           populateBean(beanName, mbd, instanceWrapper);
+       } catch (Throwable ex) {
+           // 省略...
+       }
+       return exposedObject;
+   }
+   ```
+
+5. [保存到三级缓存中] `addSingletonFactory()`
+
+   ![image-20210310201007847](README.assets/image-20210310201007847.png)
+
+6. 这时候会通过 `doGetBean() -> getSingleton()` 获取缓存中作为 **半成品** 的 Master 组件
+
+   ```java
+   protected Object getSingleton(String beanName, boolean allowEarlyReference) {
+       // singletonObjects 中保存的是 `成品` 对象
+       Object singletonObject = this.singletonObjects.get(beanName);
+       
+       /*
+       如果缓存中不存在目标对象，则会判断该对象是否处于创建过程(半成品)，
+       当我们尝试在获取 Master 对象的实例时，就会将 Master 对象标记为正在创建中，当最后再次尝试获取 Master 对象时，此时 if 判断就是 true
+       */
+       if (singletonObject == null && isSingletonCurrentlyInCreation(beanName)) {
+           
+           // 获取半成品的 bean 实例
+           singletonObject = this.earlySingletonObjects.get(beanName);
+           if (singletonObject == null && allowEarlyReference) {
+               
+               synchronized (this.singletonObjects) {
+                   singletonObject = this.singletonObjects.get(beanName);
+                   if (singletonObject == null) {
+                       // 通过三级缓存中保存的单实例工厂，创建对象
+                       singletonObject = this.earlySingletonObjects.get(beanName);
+                       if (singletonObject == null) {
+                           ObjectFactory<?> singletonFactory = this.singletonFactories.get(beanName);
+                           if (singletonFactory != null) {
+                               singletonObject = singletonFactory.getObject();
+                               // 将 半成品 bean 存放到二级缓存中
+                               this.earlySingletonObjects.put(beanName, singletonObject);
+                               // 删除三级缓存中的数据
+                               this.singletonFactories.remove(beanName);
+                           }
+                       }
+                   }
+               }
+               
+           }
+           
+       }
+       
+       return singletonObject;
+   }
+   ```
+
+7. 总结
+
+   1. Spring是通过递归 + 三级缓存解决依赖循环
+   2. Spring实例化一个bean的时候，是分两步进行的，**首先实例化目标bean，然后为其注入属性。**
+
 # 第三章 Web
 
 ## 3.1 servlet3.0
